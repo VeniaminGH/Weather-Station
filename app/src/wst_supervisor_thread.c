@@ -13,9 +13,12 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/gpl-3.0.html>.
  */
 
+#include "wst_key_driver.h"
+
 #include <zephyr/device.h>
 #include <zephyr/lorawan/lorawan.h>
 #include <zephyr/kernel.h>
+#include <assert.h>
 #include <stdio.h>
 
 /* Customize based on network configuration */
@@ -70,6 +73,9 @@ static void run_init_work(struct k_work *item)
 	uint8_t join_eui[] = LORAWAN_JOIN_EUI;
 	uint8_t app_key[] = LORAWAN_APP_KEY;
 	int ret;
+
+	bool ok = wst_key_driver_init();
+	assert(ok);
 
 	struct lorawan_downlink_cb downlink_cb = {
 		.port = LW_RECV_PORT_ANY,
