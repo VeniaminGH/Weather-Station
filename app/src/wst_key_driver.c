@@ -56,7 +56,6 @@ typedef struct {
 	struct gpio_callback cb_data;
 	wst_key_state_t state;
 	const struct gpio_dt_spec* key;
-	key_event_handler_t hanlder;
 } wst_key_context_t;
 
 
@@ -67,6 +66,7 @@ static const struct gpio_dt_spec key2 = GPIO_DT_SPEC_GET_OR(SW2_NODE, gpios, {0}
 static wst_key_context_t key0_ctx = {.id = WST_KEY_ID_0, .key = &key0};
 static wst_key_context_t key1_ctx = {.id = WST_KEY_ID_1, .key = &key1};
 static wst_key_context_t key2_ctx = {.id = WST_KEY_ID_2, .key = &key2};
+static key_event_handler_t event_handler;
 
 static wst_key_event_t update_key_state(wst_key_context_t* key_ctx)
 {
@@ -153,9 +153,9 @@ static void key0_debounce_expired(struct k_work *work)
 
 	wst_key_event_t event = update_key_state(&key0_ctx);
 
-	if (key0_ctx.hanlder)
+	if (event_handler)
 	{
-		key0_ctx.hanlder(key0_ctx.id, event);
+		event_handler(key0_ctx.id, event);
 	}
 }
 
@@ -165,9 +165,9 @@ static void key1_debounce_expired(struct k_work *work)
 
 	wst_key_event_t event = update_key_state(&key1_ctx);
 
-	if (key1_ctx.hanlder)
+	if (event_handler)
 	{
-		key1_ctx.hanlder(key1_ctx.id, event);
+		event_handler(key1_ctx.id, event);
 	}
 }
 
@@ -177,9 +177,9 @@ static void key2_debounce_expired(struct k_work *work)
 
 	wst_key_event_t event = update_key_state(&key2_ctx);
 
-	if (key2_ctx.hanlder)
+	if (event_handler)
 	{
-		key2_ctx.hanlder(key2_ctx.id, event);
+		event_handler(key2_ctx.id, event);
 	}
 }
 
@@ -229,7 +229,7 @@ void key2_pressed(
 	k_work_reschedule(&key2_debounce_work, K_MSEC(KEY_DEBOUNCE_MS));
 }
 
-bool wst_key_driver_init(key_event_handler_t hanlder)
+bool wst_key_driver_init(key_event_handler_t handler)
 {
 	LOG_INF("Driver is initializing ...");
 
@@ -288,11 +288,9 @@ bool wst_key_driver_init(key_event_handler_t hanlder)
 		return false;
 	}
 
-	if (hanlder)
+	if (event_handler)
 	{
-		key0_ctx.hanlder = hanlder;
-		key1_ctx.hanlder = hanlder;
-		key2_ctx.hanlder = hanlder;
+		event_handler = event_handler;
 	}
 	gpio_init_callback(&key0_ctx.cb_data, key0_pressed, BIT(key0.pin));
 	gpio_add_callback(key0.port, &key0_ctx.cb_data);

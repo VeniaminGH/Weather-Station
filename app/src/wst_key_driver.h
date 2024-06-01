@@ -32,4 +32,4 @@ typedef enum {
 
 typedef void (*key_event_handler_t)(wst_key_id_t id, wst_key_event_t event);
 
-bool wst_key_driver_init(key_event_handler_t hanlder);
+bool wst_key_driver_init(key_event_handler_t handler);
