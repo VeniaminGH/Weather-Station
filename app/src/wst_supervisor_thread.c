@@ -65,6 +65,11 @@ static void lorwan_datarate_changed(enum lorawan_datarate dr)
 	LOG_INF("New Datarate: DR_%d, Max Payload %d", dr, max_size);
 }
 
+static void key_event_handler(wst_key_id_t id, wst_key_event_t event)
+{
+	LOG_INF("Key event: key_id - %d, event - %d", id, event);
+}
+
 static void run_init_work(struct k_work *item)
 {
 	const struct device *lora_dev;
@@ -74,7 +79,7 @@ static void run_init_work(struct k_work *item)
 	uint8_t app_key[] = LORAWAN_APP_KEY;
 	int ret;
 
-	bool ok = wst_key_driver_init();
+	bool ok = wst_key_driver_init(key_event_handler);
 	assert(ok);
 
 	struct lorawan_downlink_cb downlink_cb = {

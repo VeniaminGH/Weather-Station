@@ -13,8 +13,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/gpl-3.0.html>.
  */
 
-#ifndef MAIN_THREADS_H
-#define MAIN_THREADS_H
+#pragma once
 
 #include <zephyr/kernel.h>
 
@@ -27,5 +26,3 @@ void wst_user_thread_function(void *p1, void *p2, void *p3);
 struct k_thread user_thread;
 K_THREAD_STACK_DEFINE(user_stack, USER_STACKSIZE);
 void wst_supervisor_thread_function(void *p1, void *p2, void *p3);
-
-#endif /* MAIN_THREADS_H */
