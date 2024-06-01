@@ -1,16 +1,11 @@
 /*
- * This file is part of Weather Station project <https://github.com/VeniaminGH/Weather-Station>.
+ * Class A LoRaWAN sample application
+ *
  * Copyright (c) 2024 Veniamin Milevski
+ * Copyright (c) 2023 Craig Peacock
+ * Copyright (c) 2020 Manivannan Sadhasivam <mani@kernel.org>
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, version 3.
- *
- * This program is distributed WITHOUT ANY WARRANTY. See the GNU
- * General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/gpl-3.0.html>.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 #include "wst_key_driver.h"
