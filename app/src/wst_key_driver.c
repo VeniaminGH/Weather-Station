@@ -231,7 +231,7 @@ void key2_pressed(
 
 bool wst_key_driver_init(key_event_handler_t handler)
 {
-	LOG_INF("Driver is initializing ...");
+	LOG_INF("Key Driver is initializing ...");
 
 	if (!gpio_is_ready_dt(&key0)) {
 		LOG_ERR("key0 device %s is not ready", key0.port->name);
@@ -288,23 +288,38 @@ bool wst_key_driver_init(key_event_handler_t handler)
 		return false;
 	}
 
-	if (event_handler)
-	{
-		event_handler = event_handler;
-	}
 	gpio_init_callback(&key0_ctx.cb_data, key0_pressed, BIT(key0.pin));
-	gpio_add_callback(key0.port, &key0_ctx.cb_data);
+	ret = gpio_add_callback(key0.port, &key0_ctx.cb_data);
+	if (ret != 0) {
+		LOG_ERR("Error %d: failed to add callback on %s pin %d",
+			ret, key0.port->name, key0.pin);
+		return false;
+	}
 	LOG_DBG("Set up key0 at %s pin %d", key0.port->name, key0.pin);
 
 	gpio_init_callback(&key1_ctx.cb_data, key1_pressed, BIT(key1.pin));
-	gpio_add_callback(key1.port, &key1_ctx.cb_data);
+	ret = gpio_add_callback(key1.port, &key1_ctx.cb_data);
+	if (ret != 0) {
+		LOG_ERR("Error %d: failed to add callback on %s pin %d",
+			ret, key1.port->name, key1.pin);
+		return false;
+	}
 	LOG_DBG("Set up key1 at %s pin %d", key1.port->name, key1.pin);
 
 	gpio_init_callback(&key2_ctx.cb_data, key2_pressed, BIT(key2.pin));
-	gpio_add_callback(key2.port, &key2_ctx.cb_data);
+	ret = gpio_add_callback(key2.port, &key2_ctx.cb_data);
+	if (ret != 0) {
+		LOG_ERR("Error %d: failed to add callback on %s pin %d",
+			ret, key2.port->name, key2.pin);
+		return false;
+	}
 	LOG_DBG("Set up key2 at %s pin %d", key2.port->name, key2.pin);
 
-	LOG_INF("Driver is successfully initialized");
+	if (handler)
+	{
+		event_handler = handler;
+	}
 
+	LOG_INF("Key Driver is successfully initialized");
 	return true;
 }

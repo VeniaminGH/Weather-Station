@@ -9,11 +9,13 @@
  */
 
 #include "wst_key_driver.h"
+#include "wst_led_driver.h"
 
 #include <zephyr/device.h>
 #include <zephyr/lorawan/lorawan.h>
 #include <zephyr/kernel.h>
-#include <assert.h>
+#include <zephyr/sys/__assert.h>
+
 #include <stdio.h>
 
 /* Customize based on network configuration */
@@ -63,6 +65,24 @@ static void lorwan_datarate_changed(enum lorawan_datarate dr)
 static void key_event_handler(wst_key_id_t id, wst_key_event_t event)
 {
 	LOG_INF("Key event: key_id - %d, event - %d", id, event);
+
+	switch (id)
+	{
+		case WST_KEY_ID_0:
+			wst_led_driver_set_led(WST_LED_ID_BLUE, (WST_KEY_EVENT_KEY_DOWN == event) ? true : false);
+			break;
+
+		case WST_KEY_ID_1:
+			wst_led_driver_set_led(WST_LED_ID_GREEN, (WST_KEY_EVENT_KEY_DOWN == event) ? true : false);
+			break;
+
+		case WST_KEY_ID_2:
+			wst_led_driver_set_led(WST_LED_ID_RED, (WST_KEY_EVENT_KEY_DOWN == event) ? true : false);
+			break;
+
+		default:
+			break;
+	}
 }
 
 static void run_init_work(struct k_work *item)
@@ -73,9 +93,12 @@ static void run_init_work(struct k_work *item)
 	uint8_t join_eui[] = LORAWAN_JOIN_EUI;
 	uint8_t app_key[] = LORAWAN_APP_KEY;
 	int ret;
+	bool ok;
 
-	bool ok = wst_key_driver_init(key_event_handler);
-	assert(ok);
+	ok = wst_led_driver_init();
+	__ASSERT(ok, "Failed to initialize LED driver!");
+	ok = wst_key_driver_init(key_event_handler);
+	__ASSERT(ok, "Failed to initlialize Key driver!");
 
 	struct lorawan_downlink_cb downlink_cb = {
 		.port = LW_RECV_PORT_ANY,
