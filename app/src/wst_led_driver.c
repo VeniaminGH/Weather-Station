@@ -133,5 +133,6 @@ bool wst_led_driver_set_led(wst_led_id_t id, bool state)
 	{
 		LOG_ERR("wst_led_driver_set_led failed, error code - %d!", result);
 	}
+
 	return !result;
 }
