@@ -13,19 +13,9 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/gpl-3.0.html>.
  */
 
-#include <zephyr/kernel.h>
-#include <stdio.h>
+#pragma once
 
-#define LOG_LEVEL CONFIG_LOG_DEFAULT_LEVEL
+#include <stddef.h>
 
-#include <zephyr/logging/log.h>
-
-LOG_MODULE_REGISTER(wst_user_thread);
-
-void wst_user_thread_function(void *p1, void *p2, void *p3)
-{
-	LOG_INF("Entering User Thread...");
-	while (1) {
-		k_sleep(K_FOREVER);
-	}
-}
+int wst_lorawan_join(void);
+int wst_lorawan_send(void* data, size_t size);

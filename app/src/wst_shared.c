@@ -13,16 +13,22 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/gpl-3.0.html>.
  */
 
-#pragma once
+#include "wst_shared.h"
 
-#include <zephyr/kernel.h>
+//
+// Define the shared partition, which will contain a memory region that
+// will be accessible by both IO and APP threads
+//
+K_APPMEM_PARTITION_DEFINE(shared_partition);
 
-#define SUPERVISOR_STACKSIZE	4096
-struct k_thread supervisor_thread;
-K_THREAD_STACK_DEFINE(supervisor_stack, SUPERVISOR_STACKSIZE);
-void wst_user_thread_function(void *p1, void *p2, void *p3);
+//
+// Define a memory pool in the shared area
+//
+K_APP_DMEM(shared_partition) struct sys_heap shared_pool;
+K_APP_DMEM(shared_partition) uint8_t shared_pool_mem[SHARED_POOL_SIZE];
 
-#define USER_STACKSIZE			2048
-struct k_thread user_thread;
-K_THREAD_STACK_DEFINE(user_stack, USER_STACKSIZE);
-void wst_supervisor_thread_function(void *p1, void *p2, void *p3);
+//
+// Define queues for exchanging data between IO and App threads
+//
+K_QUEUE_DEFINE(shared_queue_incoming);
+K_QUEUE_DEFINE(shared_queue_outgoing);

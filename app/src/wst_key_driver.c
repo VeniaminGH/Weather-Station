@@ -4,7 +4,7 @@
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, version 3.
+ * the Free Software Foundation, version 3. 
  *
  * This program is distributed WITHOUT ANY WARRANTY. See the GNU
  * General Public License for more details.
@@ -18,6 +18,8 @@
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/sys/__assert.h>
+
+DEVICE_DECLARE(wst_key_driver_0);
 
 #define LOG_LEVEL CONFIG_LOG_DEFAULT_LEVEL
 
@@ -58,7 +60,6 @@ typedef struct {
 	const struct gpio_dt_spec* key;
 } wst_key_context_t;
 
-
 static const struct gpio_dt_spec key0 = GPIO_DT_SPEC_GET_OR(SW0_NODE, gpios, {0});
 static const struct gpio_dt_spec key1 = GPIO_DT_SPEC_GET_OR(SW1_NODE, gpios, {0});
 static const struct gpio_dt_spec key2 = GPIO_DT_SPEC_GET_OR(SW2_NODE, gpios, {0});
@@ -66,7 +67,15 @@ static const struct gpio_dt_spec key2 = GPIO_DT_SPEC_GET_OR(SW2_NODE, gpios, {0}
 static wst_key_context_t key0_ctx = {.id = WST_KEY_ID_0, .key = &key0};
 static wst_key_context_t key1_ctx = {.id = WST_KEY_ID_1, .key = &key1};
 static wst_key_context_t key2_ctx = {.id = WST_KEY_ID_2, .key = &key2};
-static key_event_handler_t event_handler;
+
+struct wst_key_driver_dev_data {
+	const struct device *dev;
+	key_event_handler_t handler;
+	void *context;
+};
+
+static struct wst_key_driver_dev_data wst_key_driver_dev_data_0;
+
 
 static wst_key_event_t update_key_state(wst_key_context_t* key_ctx)
 {
@@ -153,9 +162,13 @@ static void key0_debounce_expired(struct k_work *work)
 
 	wst_key_event_t event = update_key_state(&key0_ctx);
 
-	if (event_handler)
+	if (wst_key_driver_dev_data_0.handler)
 	{
-		event_handler(key0_ctx.id, event);
+		wst_key_driver_dev_data_0.handler(
+			wst_key_driver_dev_data_0.dev,
+			key0_ctx.id,
+			event,
+			wst_key_driver_dev_data_0.context);
 	}
 }
 
@@ -165,9 +178,13 @@ static void key1_debounce_expired(struct k_work *work)
 
 	wst_key_event_t event = update_key_state(&key1_ctx);
 
-	if (event_handler)
+	if (wst_key_driver_dev_data_0.handler)
 	{
-		event_handler(key1_ctx.id, event);
+		wst_key_driver_dev_data_0.handler(
+			wst_key_driver_dev_data_0.dev,
+			key1_ctx.id,
+			event,
+			wst_key_driver_dev_data_0.context);
 	}
 }
 
@@ -177,9 +194,13 @@ static void key2_debounce_expired(struct k_work *work)
 
 	wst_key_event_t event = update_key_state(&key2_ctx);
 
-	if (event_handler)
+	if (wst_key_driver_dev_data_0.handler)
 	{
-		event_handler(key2_ctx.id, event);
+		wst_key_driver_dev_data_0.handler(
+			wst_key_driver_dev_data_0.dev,
+			key2_ctx.id,
+			event,
+			wst_key_driver_dev_data_0.context);
 	}
 }
 
@@ -187,7 +208,7 @@ static K_WORK_DELAYABLE_DEFINE(key0_debounce_work, key0_debounce_expired);
 static K_WORK_DELAYABLE_DEFINE(key1_debounce_work, key1_debounce_expired);
 static K_WORK_DELAYABLE_DEFINE(key2_debounce_work, key2_debounce_expired);
 
-void key0_pressed(
+static void key0_pressed(
 	const struct device *dev,
 	struct gpio_callback *cb,
 	uint32_t pins)
@@ -201,7 +222,7 @@ void key0_pressed(
 	k_work_reschedule(&key0_debounce_work, K_MSEC(KEY_DEBOUNCE_MS));
 }
 
-void key1_pressed(
+static void key1_pressed(
 	const struct device *dev,
 	struct gpio_callback *cb,
 	uint32_t pins)
@@ -215,7 +236,7 @@ void key1_pressed(
 	k_work_reschedule(&key1_debounce_work, K_MSEC(KEY_DEBOUNCE_MS));
 }
 
-void key2_pressed(
+static void key2_pressed(
 	const struct device *dev,
 	struct gpio_callback *cb,
 	uint32_t pins)
@@ -229,8 +250,10 @@ void key2_pressed(
 	k_work_reschedule(&key2_debounce_work, K_MSEC(KEY_DEBOUNCE_MS));
 }
 
-bool wst_key_driver_init(key_event_handler_t handler)
+static int wst_key_driver_init_impl(const struct device *dev)
 {
+	struct wst_key_driver_dev_data *data = dev->data;
+
 	LOG_INF("Key Driver is initializing ...");
 
 	if (!gpio_is_ready_dt(&key0)) {
@@ -315,11 +338,34 @@ bool wst_key_driver_init(key_event_handler_t handler)
 	}
 	LOG_DBG("Set up key2 at %s pin %d", key2.port->name, key2.pin);
 
-	if (handler)
-	{
-		event_handler = handler;
-	}
+	data->dev = dev;
 
-	LOG_INF("Key Driver is successfully initialized");
-	return true;
+	LOG_INF("Key Driver is successfully initialized - %p", dev);
+
+	return 0;
 }
+
+static int wst_key_driver_set_handler_impl(
+	const struct device *dev,
+	key_event_handler_t handler,
+	void *context)
+{
+	struct wst_key_driver_dev_data *data = dev->data;
+
+	unsigned int key = irq_lock();
+	data->context = context;
+	data->handler = handler;
+	irq_unlock(key);
+
+	return 0;
+}
+
+static struct wst_key_driver_api wst_key_driver_api = {
+	.set_handler = wst_key_driver_set_handler_impl
+};
+
+DEVICE_DEFINE(wst_key_driver_0, WST_KEY_DRIVER_NAME,
+	&wst_key_driver_init_impl, NULL,
+	&wst_key_driver_dev_data_0, NULL,
+	POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEVICE,
+	&wst_key_driver_api);
