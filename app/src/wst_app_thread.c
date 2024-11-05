@@ -20,6 +20,7 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
+#include <zephyr/drivers/sensor.h>
 #include <zephyr/sys/libc-hooks.h>
 #include <zephyr/logging/log.h>
 
@@ -43,6 +44,8 @@ K_APPMEM_PARTITION_DEFINE(wst_app_partition);
 //
 WST_APP_BSS const struct device *key_device;
 WST_APP_BSS const struct device *led_device;
+
+const struct device *const die_temp_sensor = DEVICE_DT_GET(DT_ALIAS(die_temp0));
 
 #define DELAY_SEND K_MSEC(10000)
 
@@ -85,6 +88,28 @@ static void key_event_handler(
 	}
 }
 
+static int print_die_temperature(const struct device *dev)
+{
+	struct sensor_value val;
+	int ret;
+
+	/* fetch sensor samples */
+	ret = sensor_sample_fetch(dev);
+	if (ret) {
+		LOG_ERR("Failed to fetch sample (%d)\n", ret);
+		return ret;
+	}
+
+	ret = sensor_channel_get(dev, SENSOR_CHAN_DIE_TEMP, &val);
+	if (ret) {
+		LOG_ERR("Failed to get data (%d)\n", ret);
+		return ret;
+	}
+
+	LOG_INF("CPU Die temperature[%s]: %d°C\n", dev->name, val.val1);
+
+	return 0;
+}
 
 static void application_thread(void *p1, void *p2, void *p3)
 {
@@ -121,6 +146,8 @@ static void application_thread(void *p1, void *p2, void *p3)
 	// Once connected, start sending messages
 	//
 	while (1) {
+		print_die_temperature(die_temp_sensor);
+
 		char* lorawan_msg = "helloworld!";
 		size_t size = strlen(lorawan_msg);
 
@@ -159,6 +186,11 @@ void wst_app_thread_entry(void *p1, void *p2, void *p3)
 		k_oops();
 	}
 
+	if (!device_is_ready(die_temp_sensor)) {
+		LOG_ERR("sensor: device %s not ready.\n", die_temp_sensor->name);
+		k_oops();
+	}
+
 	//
 	// Use default memory domain for our application thread and 
 	// add application and shared partitions to it.
@@ -194,6 +226,7 @@ void wst_app_thread_entry(void *p1, void *p2, void *p3)
 		k_current_get(),
 		key_device,
 		led_device,
+		die_temp_sensor,
 		&shared_queue_incoming,
 		&shared_queue_outgoing
 	);
