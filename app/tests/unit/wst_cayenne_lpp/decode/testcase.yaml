@@ -1,0 +1,6 @@
+common:
+  tags:
+    cayenne_lpp decode
+tests:
+  cayenne_lpp.decode:
+    type: unit
