@@ -16,6 +16,7 @@
 
 #include "wst_io_thread.h"
 #include "wst_app_thread.h"
+#include "wst_sensor_thread.h"
 #include "wst_shared.h"
 
 #include <zephyr/kernel.h>
@@ -31,6 +32,10 @@ LOG_MODULE_REGISTER(wst_main);
 // Define IO Thread
 struct k_thread wst_io_thread;
 K_THREAD_STACK_DEFINE(wst_io_stack, WST_IO_STACKSIZE);
+
+// Define Sensor Thread
+struct k_thread wst_sensor_thread;;
+K_THREAD_STACK_DEFINE(wst_sensor_stack, WST_SENSOR_STACKSIZE);
 
 // Define App Thread
 struct k_thread wst_app_thread;;
@@ -63,7 +68,7 @@ int main(void)
 		K_NO_WAIT);
 	LOG_INF("IO thread is ceated");
 
-	// Create App Thread */
+	// Create App Thread
 	k_tid_t app_thread = k_thread_create(
 		&wst_app_thread,
 		wst_app_stack,
@@ -77,8 +82,23 @@ int main(void)
 		K_NO_WAIT);
 	LOG_INF("APP thread is ceated");
 
+	// Create Sensor Thread
+	k_tid_t sensor_thread = k_thread_create(
+		&wst_sensor_thread,
+		wst_sensor_stack,
+		WST_SENSOR_STACKSIZE,
+		wst_sensor_thread_entry,
+		NULL,
+		NULL,
+		NULL,
+		-1,
+		K_INHERIT_PERMS,
+		K_NO_WAIT);
+	LOG_INF("SENSOR thread is ceated");
+
 	k_thread_join(io_thread, K_FOREVER);
 	k_thread_join(app_thread, K_FOREVER);
+	k_thread_join(sensor_thread, K_FOREVER);
 
 	return 0;
 }

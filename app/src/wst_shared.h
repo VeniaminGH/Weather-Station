@@ -19,6 +19,8 @@
 #include <zephyr/app_memory/app_memdomain.h>
 #include <zephyr/sys/sys_heap.h>
 
+#include <zephyr/drivers/sensor_data_types.h>
+
 #define SHARED_POOL_SIZE (2048)
 
 extern struct k_mem_partition shared_partition;
@@ -30,16 +32,25 @@ extern struct k_queue shared_queue_incoming;
 extern struct k_queue shared_queue_outgoing;
 
 
-typedef enum wst_io_event {
-	wst_io_event_lorawan_joined,
-	wst_io_event_lorawan_send,
-	wst_io_event_lorawan_send_completed,
-	wst_io_event_lorawan_received
-} wst_io_event_t;
+typedef enum wst_event {
+	wst_event_lorawan_joined,
+	wst_event_lorawan_send,
+	wst_event_lorawan_send_completed,
+	wst_event_lorawan_received,
+	wst_event_sensor_data_available,
+} wst_event_t;
 
 
-typedef struct wst_io_msg {
-	wst_io_event_t event;
-	size_t size;
-	uint8_t payload[0];
-} wst_io_msg_t;
+typedef struct wst_event_msg {
+	wst_event_t event;
+	union {
+		struct {
+			size_t size;
+			uint8_t payload[0];
+		} buffer;
+		struct {
+			uint16_t count;
+			struct sensor_q31_data data[0];
+		} sensor;
+	};
+} wst_event_msg_t;

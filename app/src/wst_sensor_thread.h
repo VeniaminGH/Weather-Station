@@ -13,26 +13,8 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/gpl-3.0.html>.
  */
 
-/ {
-	leds: leds {
-		red_led_3: led_2 {
-			gpios = <&gpiob 11 GPIO_ACTIVE_HIGH>;
-			label = "User LED3";
-		};
-	};
+#pragma once
 
-	aliases {
-		led0 = &blue_led_1;
-		led1 = &green_led_2;
-		led2 = &red_led_3;
-	};
-};
+#define WST_SENSOR_STACKSIZE	4096
 
-&i2c2 {
-	bme680_i2c: bme680@76 {
-		// 0x76 - SDO <-> GND
-		// 0x77 - SDO <-> VCC
-		compatible = "bosch,bme680";
-		reg = <0x76>;
-	};
-};
+void wst_sensor_thread_entry(void *p1, void *p2, void *p3);

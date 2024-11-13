@@ -45,16 +45,15 @@ void wst_io_thread_entry(void *p1, void *p2, void *p3)
 
 	LOG_INF("Joined the Network!");
 
-	wst_io_msg_t* msg;
-	msg = sys_heap_alloc(&shared_pool, sizeof(wst_io_msg_t));
+	wst_event_msg_t* msg;
+	msg = sys_heap_alloc(&shared_pool, sizeof(wst_event_msg_t));
 	if (msg == NULL) {
 		LOG_ERR("couldn't alloc memory from shared pool");
 		k_panic();
 	}
 
 	// Send joined message to Application Thread
-	msg->event = wst_io_event_lorawan_joined;
-	msg->size = 0;
+	msg->event = wst_event_lorawan_joined;
 	k_queue_alloc_append(&shared_queue_incoming, msg);
 
 	while (1) {
@@ -64,10 +63,10 @@ void wst_io_thread_entry(void *p1, void *p2, void *p3)
 			LOG_ERR("no msg?");
 			k_panic();
 		}
-		if (wst_io_event_lorawan_send == msg->event)
+		if (wst_event_lorawan_send == msg->event)
 		{
 			// send it to the network
-			ret = wst_lorawan_send(msg->payload, msg->size);
+			ret = wst_lorawan_send(msg->buffer.payload, msg->buffer.size);
 			if (ret) {
 				LOG_ERR("Failed to send data to the Network (%d)!", ret);
 			}
