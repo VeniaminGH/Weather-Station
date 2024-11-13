@@ -31,7 +31,7 @@ LOG_MODULE_REGISTER(wst_sensor_thread);
 
 #define DELAY_SENSOR_INTERVAL	K_MSEC(5000)
 
-#define NUM_SENSORS 2
+#define NUM_SENSORS 3
 
 static const struct device *const die_temp_sensor = DEVICE_DT_GET(DT_ALIAS(die_temp0));
 SENSOR_DT_READ_IODEV(die_temp_iodev, DT_ALIAS(die_temp0),
@@ -43,9 +43,15 @@ SENSOR_DT_READ_IODEV(env_iodev, DT_COMPAT_GET_ANY_STATUS_OKAY(bosch_bme680),
 	{SENSOR_CHAN_AMBIENT_TEMP, 0}
 );
 
-struct rtio_iodev* iodevs[NUM_SENSORS] = {
+static const struct device *const light_sensor = DEVICE_DT_GET_ONE(rohm_bh1750);
+SENSOR_DT_READ_IODEV(light_iodev, DT_COMPAT_GET_ANY_STATUS_OKAY(rohm_bh1750),
+	{SENSOR_CHAN_LIGHT, 0}
+);
+
+struct rtio_iodev* iodevs[] = {
 	&die_temp_iodev,
 	&env_iodev,
+	&light_iodev
 };
 
 RTIO_DEFINE_WITH_MEMPOOL(
@@ -105,25 +111,44 @@ static bool wst_sensor_get_data(struct sensor_q31_data* sensor_data, uint16_t co
 		}
 
 		/* Frame iterators, one per channel we are decoding */
-		uint32_t temp_fits[2] = { 0, 0 };
+		uint32_t temp_fits = 0;
 
-		if (0 == i) {
-			struct sensor_chan_spec channel = {SENSOR_CHAN_DIE_TEMP, 0};
-			decoder->decode(buf, channel, &temp_fits[0], 1, &sensor_data[0]);
+		switch(i) {
+			case 0:	{
+					struct sensor_chan_spec channel = {SENSOR_CHAN_DIE_TEMP, 0};
+					decoder->decode(buf, channel, &temp_fits, 1, &sensor_data[0]);
 
-			LOG_INF("Temperature for %s channel 0, %" PRIsensor_q31_data,
-				die_temp_sensor->name,
-				PRIsensor_q31_data_arg(sensor_data[0], 0)
-			);
-		}
-		else {
-			struct sensor_chan_spec channel = {SENSOR_CHAN_AMBIENT_TEMP, 0};
-			decoder->decode(buf, channel, &temp_fits[1], 1, &sensor_data[1]);
+					LOG_INF("Temperature for %s channel 0, %" PRIsensor_q31_data,
+						die_temp_sensor->name,
+						PRIsensor_q31_data_arg(sensor_data[0], 0)
+					);
+				}
+				break;
 
-			LOG_INF("Temperature for %s channel 1, %" PRIsensor_q31_data,
-				env_sensor->name,
-				PRIsensor_q31_data_arg(sensor_data[1], 0)
-			);
+			case 1: {
+					struct sensor_chan_spec channel = {SENSOR_CHAN_AMBIENT_TEMP, 0};
+					decoder->decode(buf, channel, &temp_fits, 1, &sensor_data[1]);
+
+					LOG_INF("Temperature for %s channel 1, %" PRIsensor_q31_data,
+						env_sensor->name,
+						PRIsensor_q31_data_arg(sensor_data[1], 0)
+					);
+				}
+				break;
+
+			case 2: {
+					struct sensor_chan_spec channel = {SENSOR_CHAN_LIGHT, 0};
+					decoder->decode(buf, channel, &temp_fits, 1, &sensor_data[2]);
+
+					LOG_INF("Illuminance for %s channel 2, %" PRIsensor_q31_data,
+						light_sensor->name,
+						PRIsensor_q31_data_arg(sensor_data[2], 0)
+					);
+				}
+				break;
+
+			default:
+				break;
 		}
 		/* Done with the buffer, release it */
 		rtio_release_buffer(&temp_ctx, buf, buf_len);
@@ -149,6 +174,10 @@ void wst_sensor_thread_entry(void *p1, void *p2, void *p3)
 	}
 	if (!device_is_ready(env_sensor)) {
 		LOG_ERR("sensor: device %s not ready.\n", env_sensor->name);
+		k_oops();
+	}
+	if (!device_is_ready(light_sensor)) {
+		LOG_ERR("sensor: device %s not ready.\n", light_sensor->name);
 		k_oops();
 	}
 

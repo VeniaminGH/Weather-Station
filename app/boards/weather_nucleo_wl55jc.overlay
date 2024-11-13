@@ -35,4 +35,11 @@
 		compatible = "bosch,bme680";
 		reg = <0x76>;
 	};
+
+	bh1750_i2c: bh1750@23 {
+		// 0x23 - ADDR <-> GND
+		// 0x5c - ADDR <-> VCC
+		compatible = "rohm,bh1750";
+		reg = <0x23>;
+	};
 };
