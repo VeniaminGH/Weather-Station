@@ -89,11 +89,23 @@ static void key_event_handler(
 static void handle_sensor_data_available(const wst_event_msg_t* msg)
 {
 	LOG_INF("Temperature for channel 0, %" PRIsensor_q31_data,
-		PRIsensor_q31_data_arg(msg->sensor.data[0], 0)
+		PRIsensor_q31_data_arg(msg->sensor.data[2], 0)
+	);
+
+	LOG_INF("Humidity for channel 0, %" PRIsensor_q31_data,
+		PRIsensor_q31_data_arg(msg->sensor.data[3], 0)
+	);
+
+	LOG_INF("Pressure for channel 0, %" PRIsensor_q31_data,
+		PRIsensor_q31_data_arg(msg->sensor.data[4], 0)
+	);
+
+	LOG_INF("Illuminance for channel 0, %" PRIsensor_q31_data,
+		PRIsensor_q31_data_arg(msg->sensor.data[1], 0)
 	);
 
 	LOG_INF("Temperature for channel 1, %" PRIsensor_q31_data,
-		PRIsensor_q31_data_arg(msg->sensor.data[1], 0)
+		PRIsensor_q31_data_arg(msg->sensor.data[0], 0)
 	);
 }
 

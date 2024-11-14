@@ -32,15 +32,11 @@ LOG_MODULE_REGISTER(wst_sensor_thread);
 #define DELAY_SENSOR_INTERVAL	K_MSEC(5000)
 
 #define NUM_SENSORS 3
+#define NUM_SENSOR_CHANNELS 5
 
 static const struct device *const die_temp_sensor = DEVICE_DT_GET(DT_ALIAS(die_temp0));
 SENSOR_DT_READ_IODEV(die_temp_iodev, DT_ALIAS(die_temp0),
 	{SENSOR_CHAN_DIE_TEMP, 0}
-);
-
-static const struct device *const env_sensor = DEVICE_DT_GET_ONE(bosch_bme680);
-SENSOR_DT_READ_IODEV(env_iodev, DT_COMPAT_GET_ANY_STATUS_OKAY(bosch_bme680),
-	{SENSOR_CHAN_AMBIENT_TEMP, 0}
 );
 
 static const struct device *const light_sensor = DEVICE_DT_GET_ONE(rohm_bh1750);
@@ -48,18 +44,25 @@ SENSOR_DT_READ_IODEV(light_iodev, DT_COMPAT_GET_ANY_STATUS_OKAY(rohm_bh1750),
 	{SENSOR_CHAN_LIGHT, 0}
 );
 
+static const struct device *const env_sensor = DEVICE_DT_GET_ONE(bosch_bme680);
+SENSOR_DT_READ_IODEV(env_iodev, DT_COMPAT_GET_ANY_STATUS_OKAY(bosch_bme680),
+	{SENSOR_CHAN_AMBIENT_TEMP, 0},
+	{SENSOR_CHAN_HUMIDITY, 0},
+	{SENSOR_CHAN_PRESS, 0}
+);
+
 struct rtio_iodev* iodevs[] = {
 	&die_temp_iodev,
+	&light_iodev,
 	&env_iodev,
-	&light_iodev
 };
 
 RTIO_DEFINE_WITH_MEMPOOL(
 	temp_ctx,
-	NUM_SENSORS,
-	NUM_SENSORS,
-	NUM_SENSORS,
-	128,
+	8,
+	8,
+	NUM_SENSOR_CHANNELS,
+	64,
 	sizeof(void *)
 );
 
@@ -71,7 +74,7 @@ static bool wst_sensor_get_data(struct sensor_q31_data* sensor_data, uint16_t co
 	uint8_t *buf;
 	uint32_t buf_len;
 
-	/* Non-Blocking read for each sensor */
+	// Non-Blocking read for each sensor
 	for (int i = 0; i < NUM_SENSORS; i++) {
 		rc = sensor_read_async_mempool(iodevs[i], &temp_ctx, iodevs[i]);
 
@@ -81,7 +84,7 @@ static bool wst_sensor_get_data(struct sensor_q31_data* sensor_data, uint16_t co
 		}
 	}
 
-	/* Wait for read completions */
+	// Wait for read completions
 	for (int i = 0; i < NUM_SENSORS; i++) {
 		cqe = rtio_cqe_consume_block(&temp_ctx);
 
@@ -90,7 +93,7 @@ static bool wst_sensor_get_data(struct sensor_q31_data* sensor_data, uint16_t co
 			return false;
 		}
 
-		/* Get the associated mempool buffer with the completion */
+		// Get the associated mempool buffer with the completion
 		rc = rtio_cqe_get_mempool_buffer(&temp_ctx, cqe, &buf, &buf_len);
 
 		if (rc != 0) {
@@ -101,7 +104,7 @@ static bool wst_sensor_get_data(struct sensor_q31_data* sensor_data, uint16_t co
 		const struct device *sensor = ((const struct sensor_read_config *)
 			((struct rtio_iodev *)cqe->userdata)->data)->sensor;
 
-		/* Done with the completion event, release it */
+		// Done with the completion event, release it
 		rtio_cqe_release(&temp_ctx, cqe);
 
 		rc = sensor_get_decoder(sensor, &decoder);
@@ -110,39 +113,90 @@ static bool wst_sensor_get_data(struct sensor_q31_data* sensor_data, uint16_t co
 			return false;
 		}
 
-		/* Frame iterators, one per channel we are decoding */
-		uint32_t temp_fits = 0;
-
 		switch(i) {
 			case 0:	{
-					struct sensor_chan_spec channel = {SENSOR_CHAN_DIE_TEMP, 0};
-					decoder->decode(buf, channel, &temp_fits, 1, &sensor_data[0]);
+					// Frame iterators, one per channel we are decoding
+					uint32_t fits = 0;
+					rc = decoder->decode(
+						buf,
+						(struct sensor_chan_spec) {SENSOR_CHAN_DIE_TEMP, 0},
+						&fits,
+						1,
+						&sensor_data[0]
+					);
 
-					LOG_INF("Temperature for %s channel 0, %" PRIsensor_q31_data,
+					LOG_DBG("Die Temperature for %s channel 0, result - %d, value - %" PRIsensor_q31_data,
 						die_temp_sensor->name,
+						rc,
 						PRIsensor_q31_data_arg(sensor_data[0], 0)
 					);
 				}
 				break;
 
 			case 1: {
-					struct sensor_chan_spec channel = {SENSOR_CHAN_AMBIENT_TEMP, 0};
-					decoder->decode(buf, channel, &temp_fits, 1, &sensor_data[1]);
+					// Frame iterators, one per channel we are decoding
+					uint32_t fits = 0;
+					rc = decoder->decode(
+						buf,
+						(struct sensor_chan_spec) {SENSOR_CHAN_LIGHT, 0},
+						&fits,
+						1,
+						&sensor_data[1]
+					);
 
-					LOG_INF("Temperature for %s channel 1, %" PRIsensor_q31_data,
-						env_sensor->name,
+					LOG_DBG("Illuminance for %s channel 0, result - %d, value - %" PRIsensor_q31_data,
+						light_sensor->name,
+						rc,
 						PRIsensor_q31_data_arg(sensor_data[1], 0)
 					);
 				}
 				break;
 
 			case 2: {
-					struct sensor_chan_spec channel = {SENSOR_CHAN_LIGHT, 0};
-					decoder->decode(buf, channel, &temp_fits, 1, &sensor_data[2]);
+					// Frame iterators, one per channel we are decoding
+					uint32_t fits = 0;
+					rc = decoder->decode(
+						buf,
+						(struct sensor_chan_spec) {SENSOR_CHAN_AMBIENT_TEMP, 0},
+						&fits,
+						1,
+						&sensor_data[2]
+					);
 
-					LOG_INF("Illuminance for %s channel 2, %" PRIsensor_q31_data,
-						light_sensor->name,
+					LOG_DBG("Ambient Temperature for %s channel 0, result - %d, value - %" PRIsensor_q31_data,
+						env_sensor->name,
+						rc,
 						PRIsensor_q31_data_arg(sensor_data[2], 0)
+					);
+
+					fits = 0;
+					rc = decoder->decode(
+						buf,
+						(struct sensor_chan_spec) {SENSOR_CHAN_HUMIDITY, 0},
+						&fits,
+						1,
+						&sensor_data[3]
+					);
+
+					LOG_DBG("Humidity for %s channel 0, result - %d, value - %" PRIsensor_q31_data,
+						env_sensor->name,
+						rc,
+						PRIsensor_q31_data_arg(sensor_data[3], 0)
+					);
+
+					fits = 0;
+					rc = decoder->decode(
+						buf,
+						(struct sensor_chan_spec) {SENSOR_CHAN_PRESS, 0},
+						&fits,
+						1,
+						&sensor_data[4]
+					);
+
+					LOG_DBG("Pressure for %s channel 0, result - %d, value - %" PRIsensor_q31_data,
+						env_sensor->name,
+						rc,
+						PRIsensor_q31_data_arg(sensor_data[4], 0)
 					);
 				}
 				break;
@@ -150,7 +204,7 @@ static bool wst_sensor_get_data(struct sensor_q31_data* sensor_data, uint16_t co
 			default:
 				break;
 		}
-		/* Done with the buffer, release it */
+		// Done with the buffer, release it
 		rtio_release_buffer(&temp_ctx, buf, buf_len);
 	}
 
@@ -183,9 +237,9 @@ void wst_sensor_thread_entry(void *p1, void *p2, void *p3)
 
 	while (1) {
 
-		struct sensor_q31_data temp_data[NUM_SENSORS] = {0};
+		struct sensor_q31_data temp_data[NUM_SENSOR_CHANNELS] = {0};
 
-		if (wst_sensor_get_data(temp_data, NUM_SENSORS)) {
+		if (wst_sensor_get_data(temp_data, NUM_SENSOR_CHANNELS)) {
 			wst_event_msg_t* msg;
 
 			msg = sys_heap_alloc(&shared_pool, sizeof(wst_event_msg_t) + sizeof(temp_data));
@@ -196,7 +250,7 @@ void wst_sensor_thread_entry(void *p1, void *p2, void *p3)
 
 			// Send Sensor message to Application thread
 			msg->event = wst_event_sensor_data_available;
-			msg->sensor.count = NUM_SENSORS;
+			msg->sensor.count = NUM_SENSOR_CHANNELS;
 			memcpy(msg->sensor.data, temp_data, sizeof(temp_data));
 			k_queue_alloc_append(&shared_queue_incoming, msg);
 		}
