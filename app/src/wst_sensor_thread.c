@@ -19,20 +19,23 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/device.h>
+#include <zephyr/sys/slist.h>
+#include <zephyr/sys/__assert.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/sensor.h>
-
 #include <zephyr/drivers/sensor_data_types.h>
 #include <zephyr/rtio/rtio.h>
 #include <zephyr/dsp/print_format.h>
 
 
+#define LOG_LEVEL CONFIG_LOG_DEFAULT_LEVEL
+//#define LOG_LEVEL LOG_LEVEL_DBG
 LOG_MODULE_REGISTER(wst_sensor_thread);
 
 #define DELAY_SENSOR_INTERVAL	K_MSEC(5000)
 
 #define NUM_SENSORS 3
-#define NUM_SENSOR_CHANNELS 5
+#define NUM_SENSOR_CHANNELS 6
 
 static const struct device *const die_temp_sensor = DEVICE_DT_GET(DT_ALIAS(die_temp0));
 SENSOR_DT_READ_IODEV(die_temp_iodev, DT_ALIAS(die_temp0),
@@ -48,7 +51,8 @@ static const struct device *const env_sensor = DEVICE_DT_GET_ONE(bosch_bme680);
 SENSOR_DT_READ_IODEV(env_iodev, DT_COMPAT_GET_ANY_STATUS_OKAY(bosch_bme680),
 	{SENSOR_CHAN_AMBIENT_TEMP, 0},
 	{SENSOR_CHAN_HUMIDITY, 0},
-	{SENSOR_CHAN_PRESS, 0}
+	{SENSOR_CHAN_PRESS, 0},
+	{SENSOR_CHAN_GAS_RES, 0}
 );
 
 struct rtio_iodev* iodevs[] = {
@@ -66,20 +70,101 @@ RTIO_DEFINE_WITH_MEMPOOL(
 	sizeof(void *)
 );
 
-static bool wst_sensor_get_data(struct sensor_q31_data* sensor_data, uint16_t count)
+typedef struct wst_sensor_data {
+	sys_snode_t node;
+	struct sensor_chan_spec spec;
+	struct sensor_q31_data data;
+} wst_sensor_data_t;
+
+
+static wst_sensor_data_t* add_sensor_data_node(
+	sys_slist_t* list,
+	struct sensor_chan_spec spec,
+	struct sensor_q31_data* data)
+{
+	wst_sensor_data_t* sensor_data = malloc(sizeof(wst_sensor_data_t));
+	sensor_data->node.next = NULL;
+	sensor_data->spec = spec;
+	sensor_data->data = *data;
+
+	sys_slist_append(list, &sensor_data->node);
+	return sensor_data;
+}
+
+static void free_sensor_data_node(wst_sensor_data_t* node)
+{
+	free(node);
+}
+
+static int decode_sensor_data(
+	sys_slist_t* values,
+	const struct sensor_read_config* sensor_config,
+	uint8_t *buf
+)
+{
+	const struct sensor_decoder_api *decoder;
+	struct sensor_q31_data data;
+	uint16_t count = 0;
+
+	int rc = sensor_get_decoder(sensor_config->sensor, &decoder);
+	if (rc != 0) {
+		LOG_ERR("sensor_get_decoder failed %d", rc);
+		return rc;
+	}
+
+	for (size_t i = 0; i < sensor_config->count; i++) {
+
+		// Frame iterators, one per channel we are decoding
+		uint32_t fits = 0;
+
+		// Try to decode
+		rc = decoder->decode(
+			buf,
+			sensor_config->channels[i],
+			&fits,
+			1,
+			&data
+		);
+
+		if (rc < 0) {
+			// In case of failure, fail gracefully,
+			// and try next channel, if any.
+			LOG_WRN("sensor decoding failed %d", rc);
+		} else {
+			// Add sensor channel data
+			LOG_DBG("%s for %s channel 0, result - %d, value - %" PRIsensor_q31_data,
+				wst_get_sensor_channel_name(sensor_config->channels[i].chan_type),
+				sensor_config->sensor->name,
+				rc,
+				PRIsensor_q31_data_arg(data, 0)
+			);
+
+			add_sensor_data_node(
+				values,
+				sensor_config->channels[i],
+				&data);
+
+			count++;
+		}
+	}
+	return (int) count;
+}
+
+static bool wst_sensor_get_data(sys_slist_t* values, uint16_t* count)
 {
 	int rc;
-	const struct sensor_decoder_api *decoder;
 	struct rtio_cqe *cqe;
 	uint8_t *buf;
 	uint32_t buf_len;
+
+	*count = 0;
 
 	// Non-Blocking read for each sensor
 	for (int i = 0; i < NUM_SENSORS; i++) {
 		rc = sensor_read_async_mempool(iodevs[i], &temp_ctx, iodevs[i]);
 
 		if (rc != 0) {
-			LOG_ERR("sensor_read() failed %d\n", rc);
+			LOG_ERR("sensor_read() failed %d", rc);
 			return false;
 		}
 	}
@@ -89,7 +174,7 @@ static bool wst_sensor_get_data(struct sensor_q31_data* sensor_data, uint16_t co
 		cqe = rtio_cqe_consume_block(&temp_ctx);
 
 		if (cqe->result != 0) {
-			LOG_ERR("async read failed %d\n", cqe->result);
+			LOG_ERR("async read failed %d", cqe->result);
 			return false;
 		}
 
@@ -97,113 +182,27 @@ static bool wst_sensor_get_data(struct sensor_q31_data* sensor_data, uint16_t co
 		rc = rtio_cqe_get_mempool_buffer(&temp_ctx, cqe, &buf, &buf_len);
 
 		if (rc != 0) {
-			LOG_ERR("get mempool buffer failed %d\n", rc);
+			LOG_ERR("get mempool buffer failed %d", rc);
 			return false;
 		}
 
-		const struct device *sensor = ((const struct sensor_read_config *)
-			((struct rtio_iodev *)cqe->userdata)->data)->sensor;
+		const struct sensor_read_config* sensor_config =
+			(const struct sensor_read_config *)
+				((struct rtio_iodev *)cqe->userdata)->data;
+
+		LOG_DBG("sensor_read_config: count - %u", sensor_config->count);
 
 		// Done with the completion event, release it
 		rtio_cqe_release(&temp_ctx, cqe);
 
-		rc = sensor_get_decoder(sensor, &decoder);
-		if (rc != 0) {
-			LOG_ERR("sensor_get_decoder failed %d\n", rc);
+		rc = decode_sensor_data(values, sensor_config, buf);
+		if (rc <= 0) {
+			LOG_ERR("decode_sensor_data failed %d", rc);
 			return false;
+		} else {
+			(*count) += (uint16_t) rc;
 		}
 
-		switch(i) {
-			case 0:	{
-					// Frame iterators, one per channel we are decoding
-					uint32_t fits = 0;
-					rc = decoder->decode(
-						buf,
-						(struct sensor_chan_spec) {SENSOR_CHAN_DIE_TEMP, 0},
-						&fits,
-						1,
-						&sensor_data[0]
-					);
-
-					LOG_DBG("Die Temperature for %s channel 0, result - %d, value - %" PRIsensor_q31_data,
-						die_temp_sensor->name,
-						rc,
-						PRIsensor_q31_data_arg(sensor_data[0], 0)
-					);
-				}
-				break;
-
-			case 1: {
-					// Frame iterators, one per channel we are decoding
-					uint32_t fits = 0;
-					rc = decoder->decode(
-						buf,
-						(struct sensor_chan_spec) {SENSOR_CHAN_LIGHT, 0},
-						&fits,
-						1,
-						&sensor_data[1]
-					);
-
-					LOG_DBG("Illuminance for %s channel 0, result - %d, value - %" PRIsensor_q31_data,
-						light_sensor->name,
-						rc,
-						PRIsensor_q31_data_arg(sensor_data[1], 0)
-					);
-				}
-				break;
-
-			case 2: {
-					// Frame iterators, one per channel we are decoding
-					uint32_t fits = 0;
-					rc = decoder->decode(
-						buf,
-						(struct sensor_chan_spec) {SENSOR_CHAN_AMBIENT_TEMP, 0},
-						&fits,
-						1,
-						&sensor_data[2]
-					);
-
-					LOG_DBG("Ambient Temperature for %s channel 0, result - %d, value - %" PRIsensor_q31_data,
-						env_sensor->name,
-						rc,
-						PRIsensor_q31_data_arg(sensor_data[2], 0)
-					);
-
-					fits = 0;
-					rc = decoder->decode(
-						buf,
-						(struct sensor_chan_spec) {SENSOR_CHAN_HUMIDITY, 0},
-						&fits,
-						1,
-						&sensor_data[3]
-					);
-
-					LOG_DBG("Humidity for %s channel 0, result - %d, value - %" PRIsensor_q31_data,
-						env_sensor->name,
-						rc,
-						PRIsensor_q31_data_arg(sensor_data[3], 0)
-					);
-
-					fits = 0;
-					rc = decoder->decode(
-						buf,
-						(struct sensor_chan_spec) {SENSOR_CHAN_PRESS, 0},
-						&fits,
-						1,
-						&sensor_data[4]
-					);
-
-					LOG_DBG("Pressure for %s channel 0, result - %d, value - %" PRIsensor_q31_data,
-						env_sensor->name,
-						rc,
-						PRIsensor_q31_data_arg(sensor_data[4], 0)
-					);
-				}
-				break;
-
-			default:
-				break;
-		}
 		// Done with the buffer, release it
 		rtio_release_buffer(&temp_ctx, buf, buf_len);
 	}
@@ -236,25 +235,70 @@ void wst_sensor_thread_entry(void *p1, void *p2, void *p3)
 	}
 
 	while (1) {
+		uint16_t count = 0;
+		sys_slist_t values;
+		
+		sys_slist_init(&values);
 
-		struct sensor_q31_data temp_data[NUM_SENSOR_CHANNELS] = {0};
+		// Obtain sensor data
+		if (wst_sensor_get_data(&values, &count)) {
 
-		if (wst_sensor_get_data(temp_data, NUM_SENSOR_CHANNELS)) {
-			wst_event_msg_t* msg;
+			LOG_DBG("Obtained %u sensor values", count);
 
-			msg = sys_heap_alloc(&shared_pool, sizeof(wst_event_msg_t) + sizeof(temp_data));
+			// Allocate sensor message to Applicaion thread
+			wst_event_msg_t* msg = sys_heap_alloc(&shared_pool, sizeof(wst_event_msg_t) + sizeof(wst_sensor_value_t)*count);
 			if (msg == NULL) {
 				LOG_ERR("couldn't alloc memory from shared pool");
 				k_panic();
 			}
 
-			// Send Sensor message to Application thread
+			// Initialize sensor message
 			msg->event = wst_event_sensor_data_available;
-			msg->sensor.count = NUM_SENSOR_CHANNELS;
-			memcpy(msg->sensor.data, temp_data, sizeof(temp_data));
+			msg->sensor.count = count;
+
+			sys_snode_t *curr, *next = NULL;
+			wst_sensor_value_t* value = msg->sensor.values;
+
+			// Iterate through sensor values list
+			SYS_SLIST_FOR_EACH_NODE_SAFE(&values, curr, next) {
+
+				// Remove sensor data node from the list
+				wst_sensor_data_t* node = (wst_sensor_data_t*) sys_slist_get(&values);
+				__ASSERT_NO_MSG(node);
+				LOG_DBG("Added sensor type %u channel %u",
+					node->spec.chan_type,
+					node->spec.chan_idx
+				);
+				// Copy sensor data
+				value->spec = node->spec;
+				value->data = node->data;
+				value++;
+				free_sensor_data_node(node);
+			}
+
+			// Send sensor message to Application thread
 			k_queue_alloc_append(&shared_queue_incoming, msg);
 		}
 
 		k_sleep(DELAY_SENSOR_INTERVAL);
 	}
+}
+
+const char* wst_get_sensor_channel_name(uint16_t chan_type)
+{
+	switch(chan_type) {
+		case SENSOR_CHAN_DIE_TEMP:
+			return "Die Temperature";
+		case SENSOR_CHAN_LIGHT:
+			return "Illuminance";
+		case SENSOR_CHAN_AMBIENT_TEMP:
+			return "Ambient Temperature";
+		case SENSOR_CHAN_HUMIDITY:
+			return "Humidity";
+		case SENSOR_CHAN_PRESS:
+			return "Pressure";
+		case SENSOR_CHAN_GAS_RES:
+			return "Gas Resistance";
+	}
+	return "Unknown";
 }

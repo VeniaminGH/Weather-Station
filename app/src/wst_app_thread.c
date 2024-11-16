@@ -17,10 +17,10 @@
 #include "wst_shared.h"
 #include "wst_key_driver.h"
 #include "wst_led_driver.h"
+#include "wst_sensor_thread.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
-#include <zephyr/drivers/sensor.h>
 #include <zephyr/sys/libc-hooks.h>
 #include <zephyr/logging/log.h>
 
@@ -88,25 +88,16 @@ static void key_event_handler(
 
 static void handle_sensor_data_available(const wst_event_msg_t* msg)
 {
-	LOG_INF("Temperature for channel 0, %" PRIsensor_q31_data,
-		PRIsensor_q31_data_arg(msg->sensor.data[2], 0)
-	);
+	for (uint16_t i = 0; i < msg->sensor.count; i++) {
 
-	LOG_INF("Humidity for channel 0, %" PRIsensor_q31_data,
-		PRIsensor_q31_data_arg(msg->sensor.data[3], 0)
-	);
+		const wst_sensor_value_t* value = &msg->sensor.values[i];
 
-	LOG_INF("Pressure for channel 0, %" PRIsensor_q31_data,
-		PRIsensor_q31_data_arg(msg->sensor.data[4], 0)
-	);
-
-	LOG_INF("Illuminance for channel 0, %" PRIsensor_q31_data,
-		PRIsensor_q31_data_arg(msg->sensor.data[1], 0)
-	);
-
-	LOG_INF("Temperature for channel 1, %" PRIsensor_q31_data,
-		PRIsensor_q31_data_arg(msg->sensor.data[0], 0)
-	);
+		LOG_INF("%s for channel %u, %" PRIsensor_q31_data,
+			wst_get_sensor_channel_name(value->spec.chan_type),
+			value->spec.chan_idx,
+			PRIsensor_q31_data_arg(value->data, 0)
+		);
+	}
 }
 
 static void application_thread(void *p1, void *p2, void *p3)

@@ -19,6 +19,7 @@
 #include <zephyr/app_memory/app_memdomain.h>
 #include <zephyr/sys/sys_heap.h>
 
+#include <zephyr/drivers/sensor.h>
 #include <zephyr/drivers/sensor_data_types.h>
 
 #define SHARED_POOL_SIZE (2048)
@@ -41,6 +42,11 @@ typedef enum wst_event {
 } wst_event_t;
 
 
+typedef struct wst_sensor_value {
+	struct sensor_chan_spec spec;
+	struct sensor_q31_data data;
+} wst_sensor_value_t;
+
 typedef struct wst_event_msg {
 	wst_event_t event;
 	union {
@@ -50,7 +56,7 @@ typedef struct wst_event_msg {
 		} buffer;
 		struct {
 			uint16_t count;
-			struct sensor_q31_data data[0];
+			wst_sensor_value_t values[0];
 		} sensor;
 	};
 } wst_event_msg_t;

@@ -15,6 +15,10 @@
 
 #pragma once
 
+#include <stdint.h>
+
 #define WST_SENSOR_STACKSIZE	4096
 
 void wst_sensor_thread_entry(void *p1, void *p2, void *p3);
+
+const char* wst_get_sensor_channel_name(uint16_t chan_type);
