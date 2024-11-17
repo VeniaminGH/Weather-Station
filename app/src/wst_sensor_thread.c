@@ -14,6 +14,7 @@
  */
 
 #include "wst_sensor_thread.h"
+#include "wst_sensor_config.h"
 #include "wst_shared.h"
 
 #include <zephyr/kernel.h>
@@ -32,41 +33,17 @@
 //#define LOG_LEVEL LOG_LEVEL_DBG
 LOG_MODULE_REGISTER(wst_sensor_thread);
 
-#define DELAY_SENSOR_INTERVAL	K_MSEC(5000)
-
-#define NUM_SENSORS 3
-#define NUM_SENSOR_CHANNELS 6
-
-static const struct device *const die_temp_sensor = DEVICE_DT_GET(DT_ALIAS(die_temp0));
-SENSOR_DT_READ_IODEV(die_temp_iodev, DT_ALIAS(die_temp0),
-	{SENSOR_CHAN_DIE_TEMP, 0}
-);
-
-static const struct device *const light_sensor = DEVICE_DT_GET_ONE(rohm_bh1750);
-SENSOR_DT_READ_IODEV(light_iodev, DT_COMPAT_GET_ANY_STATUS_OKAY(rohm_bh1750),
-	{SENSOR_CHAN_LIGHT, 0}
-);
-
-static const struct device *const env_sensor = DEVICE_DT_GET_ONE(bosch_bme680);
-SENSOR_DT_READ_IODEV(env_iodev, DT_COMPAT_GET_ANY_STATUS_OKAY(bosch_bme680),
-	{SENSOR_CHAN_AMBIENT_TEMP, 0},
-	{SENSOR_CHAN_HUMIDITY, 0},
-	{SENSOR_CHAN_PRESS, 0},
-	{SENSOR_CHAN_GAS_RES, 0}
-);
-
-struct rtio_iodev* iodevs[] = {
-	&die_temp_iodev,
-	&light_iodev,
-	&env_iodev,
-};
+#define WST_SENSOR_RTIO_SQE_NUM		(8)		// Number of the sensing RTIO SQE
+#define WST_SENSOR_RTIO_CQE_NUM		(8)		// Number of the sensing RTIO SQE
+#define WST_SENSOR_RTIO_BLOCK_SIZE	(64)	// Block size of the RTIO context
+#define WST_SENSOR_RTIO_BLOCK_COUNT	(8)		// Number of memory blocks of the RTIO context
 
 RTIO_DEFINE_WITH_MEMPOOL(
-	temp_ctx,
-	8,
-	8,
-	NUM_SENSOR_CHANNELS,
-	64,
+	rtio_ctx,
+	WST_SENSOR_RTIO_SQE_NUM,
+	WST_SENSOR_RTIO_CQE_NUM,
+	WST_SENSOR_RTIO_BLOCK_COUNT,
+	WST_SENSOR_RTIO_BLOCK_SIZE,
 	sizeof(void *)
 );
 
@@ -133,7 +110,7 @@ static int decode_sensor_data(
 		} else {
 			// Add sensor channel data
 			LOG_DBG("%s for %s channel 0, result - %d, value - %" PRIsensor_q31_data,
-				wst_get_sensor_channel_name(sensor_config->channels[i].chan_type),
+				wst_sensor_get_channel_name(sensor_config->channels[i].chan_type),
 				sensor_config->sensor->name,
 				rc,
 				PRIsensor_q31_data_arg(data, 0)
@@ -150,64 +127,64 @@ static int decode_sensor_data(
 	return (int) count;
 }
 
-static bool wst_sensor_get_data(sys_slist_t* values, uint16_t* count)
+static uint16_t wst_sensor_get_data(const wst_sensor_config_t* config, sys_slist_t* values)
 {
 	int rc;
 	struct rtio_cqe *cqe;
 	uint8_t *buf;
 	uint32_t buf_len;
 
-	*count = 0;
+	uint16_t count = 0;
 
 	// Non-Blocking read for each sensor
-	for (int i = 0; i < NUM_SENSORS; i++) {
-		rc = sensor_read_async_mempool(iodevs[i], &temp_ctx, iodevs[i]);
+	for (int i = 0; i < config->sensor_count; i++) {
+		rc = sensor_read_async_mempool(config->iodevs[i], &rtio_ctx, config->iodevs[i]);
 
 		if (rc != 0) {
 			LOG_ERR("sensor_read() failed %d", rc);
-			return false;
+			return count;
 		}
 	}
 
 	// Wait for read completions
-	for (int i = 0; i < NUM_SENSORS; i++) {
-		cqe = rtio_cqe_consume_block(&temp_ctx);
+	for (int i = 0; i < config->sensor_count; i++) {
+		cqe = rtio_cqe_consume_block(&rtio_ctx);
 
 		if (cqe->result != 0) {
 			LOG_ERR("async read failed %d", cqe->result);
-			return false;
+			return count;
 		}
 
 		// Get the associated mempool buffer with the completion
-		rc = rtio_cqe_get_mempool_buffer(&temp_ctx, cqe, &buf, &buf_len);
+		rc = rtio_cqe_get_mempool_buffer(&rtio_ctx, cqe, &buf, &buf_len);
 
 		if (rc != 0) {
 			LOG_ERR("get mempool buffer failed %d", rc);
-			return false;
+			return count;
 		}
 
-		const struct sensor_read_config* sensor_config =
+		const struct sensor_read_config* read_config =
 			(const struct sensor_read_config *)
 				((struct rtio_iodev *)cqe->userdata)->data;
 
-		LOG_DBG("sensor_read_config: count - %u", sensor_config->count);
+		LOG_DBG("sensor_read_config: count - %u", read_config->count);
 
 		// Done with the completion event, release it
-		rtio_cqe_release(&temp_ctx, cqe);
+		rtio_cqe_release(&rtio_ctx, cqe);
 
-		rc = decode_sensor_data(values, sensor_config, buf);
+		rc = decode_sensor_data(values, read_config, buf);
 		if (rc <= 0) {
 			LOG_ERR("decode_sensor_data failed %d", rc);
-			return false;
+			return count;
 		} else {
-			(*count) += (uint16_t) rc;
+			count += (uint16_t) rc;
 		}
 
 		// Done with the buffer, release it
-		rtio_release_buffer(&temp_ctx, buf, buf_len);
+		rtio_release_buffer(&rtio_ctx, buf, buf_len);
 	}
 
-	return true;
+	return count;
 }
 
 void wst_sensor_thread_entry(void *p1, void *p2, void *p3)
@@ -221,33 +198,29 @@ void wst_sensor_thread_entry(void *p1, void *p2, void *p3)
 	//
 	LOG_INF("SENSOR thread entered");
 
-	if (!device_is_ready(die_temp_sensor)) {
-		LOG_ERR("sensor: device %s not ready.\n", die_temp_sensor->name);
-		k_oops();
-	}
-	if (!device_is_ready(env_sensor)) {
-		LOG_ERR("sensor: device %s not ready.\n", env_sensor->name);
-		k_oops();
-	}
-	if (!device_is_ready(light_sensor)) {
-		LOG_ERR("sensor: device %s not ready.\n", light_sensor->name);
-		k_oops();
+	const wst_sensor_config_t* sensor_config = wst_sensor_get_config();
+	if (!sensor_config) {
+		LOG_ERR("Failed to get sensor configuration!");
+		k_panic();
 	}
 
 	while (1) {
 		uint16_t count = 0;
-		sys_slist_t values;
+		sys_slist_t values_l;
 		
-		sys_slist_init(&values);
+		sys_slist_init(&values_l);
 
 		// Obtain sensor data
-		if (wst_sensor_get_data(&values, &count)) {
+		count = wst_sensor_get_data(sensor_config, &values_l);
+		if (count) {
 
 			LOG_DBG("Obtained %u sensor values", count);
 
 			// Allocate sensor message to Applicaion thread
-			wst_event_msg_t* msg = sys_heap_alloc(&shared_pool, sizeof(wst_event_msg_t) + sizeof(wst_sensor_value_t)*count);
-			if (msg == NULL) {
+			wst_event_msg_t* msg = sys_heap_alloc(&shared_pool,
+				sizeof(wst_event_msg_t) + sizeof(wst_sensor_value_t) * count);
+
+			if (!msg) {
 				LOG_ERR("couldn't alloc memory from shared pool");
 				k_panic();
 			}
@@ -257,22 +230,22 @@ void wst_sensor_thread_entry(void *p1, void *p2, void *p3)
 			msg->sensor.count = count;
 
 			sys_snode_t *curr, *next = NULL;
-			wst_sensor_value_t* value = msg->sensor.values;
+			wst_sensor_value_t* sensor_value = msg->sensor.values;
 
 			// Iterate through sensor values list
-			SYS_SLIST_FOR_EACH_NODE_SAFE(&values, curr, next) {
+			SYS_SLIST_FOR_EACH_NODE_SAFE(&values_l, curr, next) {
 
 				// Remove sensor data node from the list
-				wst_sensor_data_t* node = (wst_sensor_data_t*) sys_slist_get(&values);
+				wst_sensor_data_t* node = (wst_sensor_data_t*) sys_slist_get(&values_l);
 				__ASSERT_NO_MSG(node);
 				LOG_DBG("Added sensor type %u channel %u",
 					node->spec.chan_type,
 					node->spec.chan_idx
 				);
 				// Copy sensor data
-				value->spec = node->spec;
-				value->data = node->data;
-				value++;
+				sensor_value->spec = node->spec;
+				sensor_value->data = node->data;
+				sensor_value++;
 				free_sensor_data_node(node);
 			}
 
@@ -280,25 +253,6 @@ void wst_sensor_thread_entry(void *p1, void *p2, void *p3)
 			k_queue_alloc_append(&shared_queue_incoming, msg);
 		}
 
-		k_sleep(DELAY_SENSOR_INTERVAL);
+		k_sleep(K_MSEC(sensor_config->polling_period_ms));
 	}
-}
-
-const char* wst_get_sensor_channel_name(uint16_t chan_type)
-{
-	switch(chan_type) {
-		case SENSOR_CHAN_DIE_TEMP:
-			return "Die Temperature";
-		case SENSOR_CHAN_LIGHT:
-			return "Illuminance";
-		case SENSOR_CHAN_AMBIENT_TEMP:
-			return "Ambient Temperature";
-		case SENSOR_CHAN_HUMIDITY:
-			return "Humidity";
-		case SENSOR_CHAN_PRESS:
-			return "Pressure";
-		case SENSOR_CHAN_GAS_RES:
-			return "Gas Resistance";
-	}
-	return "Unknown";
 }

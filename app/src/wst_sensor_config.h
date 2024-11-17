@@ -15,6 +15,16 @@
 
 #pragma once
 
-#define WST_SENSOR_STACKSIZE	4096
+#include <zephyr/rtio/rtio.h>
 
-void wst_sensor_thread_entry(void *p1, void *p2, void *p3);
+#include <stdint.h>
+
+typedef struct wst_sensor_config {
+	struct rtio_iodev** iodevs;
+	uint16_t	sensor_count;
+	uint32_t	polling_period_ms;
+} wst_sensor_config_t;
+
+const wst_sensor_config_t* wst_sensor_get_config(void);
+
+const char* wst_sensor_get_channel_name(uint16_t chan_type);

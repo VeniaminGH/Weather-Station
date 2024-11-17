@@ -17,7 +17,7 @@
 #include "wst_shared.h"
 #include "wst_key_driver.h"
 #include "wst_led_driver.h"
-#include "wst_sensor_thread.h"
+#include "wst_sensor_config.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
@@ -93,7 +93,7 @@ static void handle_sensor_data_available(const wst_event_msg_t* msg)
 		const wst_sensor_value_t* value = &msg->sensor.values[i];
 
 		LOG_INF("%s for channel %u, %" PRIsensor_q31_data,
-			wst_get_sensor_channel_name(value->spec.chan_type),
+			wst_sensor_get_channel_name(value->spec.chan_type),
 			value->spec.chan_idx,
 			PRIsensor_q31_data_arg(value->data, 0)
 		);
