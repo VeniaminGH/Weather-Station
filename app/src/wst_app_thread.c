@@ -18,6 +18,7 @@
 #include "wst_key_driver.h"
 #include "wst_led_driver.h"
 #include "wst_sensor_config.h"
+#include "wst_sensor_utils.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
@@ -92,11 +93,32 @@ static void handle_sensor_data_available(const wst_event_msg_t* msg)
 
 		const wst_sensor_value_t* value = &msg->sensor.values[i];
 
-		LOG_INF("%s for channel %u, %" PRIsensor_q31_data,
-			wst_sensor_get_channel_name(value->spec.chan_type),
-			value->spec.chan_idx,
-			PRIsensor_q31_data_arg(value->data, 0)
-		);
+		switch (wst_sensor_get_channel_format(value->spec.chan_type)) {
+
+			case wst_sensor_format_scalar:
+				LOG_INF("%-20s for channel: type %2u, index %2u, value - %" PRIsensor_q31_data,
+					wst_sensor_get_channel_name(value->spec.chan_type),
+					value->spec.chan_type,
+					value->spec.chan_idx,
+					PRIsensor_q31_data_arg(value->data.q31_data, 0)
+				);
+				break;
+
+			case wst_sensor_format_3d_vector:
+				LOG_INF("%-20s for channel: type %2u, index %2u, value - %" PRIsensor_three_axis_data,
+					wst_sensor_get_channel_name(value->spec.chan_type),
+					value->spec.chan_type,
+					value->spec.chan_idx,
+					PRIsensor_three_axis_data_arg(value->data.q31_3d_data, 0)
+				);
+				break;
+
+			case wst_sensor_format_occurence:
+			case wst_sensor_format_byte_data:
+			case wst_sensor_format_uint64_data:
+			default:
+				break;
+		};
 	}
 }
 

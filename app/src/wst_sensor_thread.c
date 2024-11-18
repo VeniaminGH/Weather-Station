@@ -15,6 +15,7 @@
 
 #include "wst_sensor_thread.h"
 #include "wst_sensor_config.h"
+#include "wst_sensor_utils.h"
 #include "wst_shared.h"
 
 #include <zephyr/kernel.h>
@@ -47,19 +48,19 @@ RTIO_DEFINE_WITH_MEMPOOL(
 	sizeof(void *)
 );
 
-typedef struct wst_sensor_data {
+typedef struct wst_sensor_node_data {
 	sys_snode_t node;
 	struct sensor_chan_spec spec;
-	struct sensor_q31_data data;
-} wst_sensor_data_t;
+	wst_sensor_data_t data;
+} wst_sensor_node_data_t;
 
 
-static wst_sensor_data_t* add_sensor_data_node(
+static wst_sensor_node_data_t* add_sensor_data_node(
 	sys_slist_t* list,
 	struct sensor_chan_spec spec,
-	struct sensor_q31_data* data)
+	wst_sensor_data_t* data)
 {
-	wst_sensor_data_t* sensor_data = malloc(sizeof(wst_sensor_data_t));
+	wst_sensor_node_data_t* sensor_data = malloc(sizeof(wst_sensor_node_data_t));
 	sensor_data->node.next = NULL;
 	sensor_data->spec = spec;
 	sensor_data->data = *data;
@@ -68,10 +69,11 @@ static wst_sensor_data_t* add_sensor_data_node(
 	return sensor_data;
 }
 
-static void free_sensor_data_node(wst_sensor_data_t* node)
+static void free_sensor_data_node(wst_sensor_node_data_t* node)
 {
 	free(node);
 }
+
 
 static int decode_sensor_data(
 	sys_slist_t* values,
@@ -80,7 +82,7 @@ static int decode_sensor_data(
 )
 {
 	const struct sensor_decoder_api *decoder;
-	struct sensor_q31_data data;
+	wst_sensor_data_t data;
 	uint16_t count = 0;
 
 	int rc = sensor_get_decoder(sensor_config->sensor, &decoder);
@@ -109,12 +111,32 @@ static int decode_sensor_data(
 			LOG_WRN("sensor decoding failed %d", rc);
 		} else {
 			// Add sensor channel data
-			LOG_DBG("%s for %s channel 0, result - %d, value - %" PRIsensor_q31_data,
-				wst_sensor_get_channel_name(sensor_config->channels[i].chan_type),
-				sensor_config->sensor->name,
-				rc,
-				PRIsensor_q31_data_arg(data, 0)
-			);
+			switch (wst_sensor_get_channel_format(sensor_config->channels[i].chan_type)) {
+
+				case wst_sensor_format_scalar:
+					LOG_DBG("%s for %s channel 0, result - %d, value - %" PRIsensor_q31_data,
+						wst_sensor_get_channel_name(sensor_config->channels[i].chan_type),
+						sensor_config->sensor->name,
+						rc,
+						PRIsensor_q31_data_arg(data.q31_data, 0)
+					);
+					break;
+
+				case wst_sensor_format_3d_vector:
+					LOG_DBG("%s for %s channel 0, result - %d, value - %" PRIsensor_three_axis_data,
+						wst_sensor_get_channel_name(sensor_config->channels[i].chan_type),
+						sensor_config->sensor->name,
+						rc,
+						PRIsensor_three_axis_data_arg(data.q31_3d_data, 0)
+					);
+					break;
+
+				case wst_sensor_format_occurence:
+				case wst_sensor_format_byte_data:
+				case wst_sensor_format_uint64_data:
+				default:
+					break;
+			};
 
 			add_sensor_data_node(
 				values,
@@ -236,7 +258,7 @@ void wst_sensor_thread_entry(void *p1, void *p2, void *p3)
 			SYS_SLIST_FOR_EACH_NODE_SAFE(&values_l, curr, next) {
 
 				// Remove sensor data node from the list
-				wst_sensor_data_t* node = (wst_sensor_data_t*) sys_slist_get(&values_l);
+				wst_sensor_node_data_t* node = (wst_sensor_node_data_t*) sys_slist_get(&values_l);
 				__ASSERT_NO_MSG(node);
 				LOG_DBG("Added sensor type %u channel %u",
 					node->spec.chan_type,

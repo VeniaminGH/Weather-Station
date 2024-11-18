@@ -28,32 +28,18 @@
 //#define LOG_LEVEL LOG_LEVEL_DBG
 LOG_MODULE_REGISTER(wst_sensor_config);
 
-#define WST_SENSOR_COUNT				(3)
-#define WST_SENSOR_POLLING_INTERVAL_MS	(5000)
+#define WST_SENSOR_COUNT				(1)
+#define WST_SENSOR_POLLING_INTERVAL_MS	(1000)
 
-
-static const struct device *const die_temp_sensor = DEVICE_DT_GET(DT_ALIAS(die_temp0));
-SENSOR_DT_READ_IODEV(die_temp_iodev, DT_ALIAS(die_temp0),
-	{SENSOR_CHAN_DIE_TEMP, 0}
-);
-
-static const struct device *const light_sensor = DEVICE_DT_GET_ONE(rohm_bh1750);
-SENSOR_DT_READ_IODEV(light_iodev, DT_COMPAT_GET_ANY_STATUS_OKAY(rohm_bh1750),
-	{SENSOR_CHAN_LIGHT, 0}
-);
-
-static const struct device *const env_sensor = DEVICE_DT_GET_ONE(bosch_bme680);
-SENSOR_DT_READ_IODEV(env_iodev, DT_COMPAT_GET_ANY_STATUS_OKAY(bosch_bme680),
-	{SENSOR_CHAN_AMBIENT_TEMP, 0},
-	{SENSOR_CHAN_HUMIDITY, 0},
-	{SENSOR_CHAN_PRESS, 0},
-	{SENSOR_CHAN_GAS_RES, 0}
+static const struct device *const acc_sensor = DEVICE_DT_GET_ONE(bosch_bmi160);
+SENSOR_DT_READ_IODEV(acc_iodev, DT_COMPAT_GET_ANY_STATUS_OKAY(bosch_bmi160),
+	{SENSOR_CHAN_DIE_TEMP, 0},
+	{SENSOR_CHAN_ACCEL_XYZ, 0},
+	{SENSOR_CHAN_GYRO_XYZ, 0}
 );
 
 static struct rtio_iodev* iodevs[] = {
-	&die_temp_iodev,
-	&light_iodev,
-	&env_iodev,
+	&acc_iodev,
 };
 
 static const wst_sensor_config_t sensor_config = {
@@ -64,25 +50,11 @@ static const wst_sensor_config_t sensor_config = {
 
 const wst_sensor_config_t* wst_sensor_get_config(void)
 {
-	if (!device_is_ready(die_temp_sensor)) {
-		LOG_ERR("device %s not ready.", die_temp_sensor->name);
+	if (!device_is_ready(acc_sensor)) {
+		LOG_ERR("device %s not ready.", acc_sensor->name);
 		k_oops();
 	} else {
-		LOG_INF("%s device found", die_temp_sensor->name);
-	}
-
-	if (!device_is_ready(env_sensor)) {
-		LOG_ERR("device %s not ready.", env_sensor->name);
-		k_oops();
-	} else {
-		LOG_INF("%s device found", env_sensor->name);
-	}
-
-	if (!device_is_ready(light_sensor)) {
-		LOG_ERR("device %s not ready.", light_sensor->name);
-		k_oops();
-	} else {
-		LOG_INF("%s device found", light_sensor->name);
+		LOG_INF("%s device found", acc_sensor->name);
 	}
 
 	return &sensor_config;

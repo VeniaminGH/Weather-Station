@@ -15,14 +15,16 @@
 
 #pragma once
 
-#include <zephyr/rtio/rtio.h>
-
 #include <stdint.h>
 
-typedef struct wst_sensor_config {
-	struct rtio_iodev** iodevs;
-	uint16_t	sensor_count;
-	uint32_t	polling_period_ms;
-} wst_sensor_config_t;
+typedef enum wst_sensor_format {
+	wst_sensor_format_occurence,
+	wst_sensor_format_3d_vector,
+	wst_sensor_format_scalar,
+	wst_sensor_format_byte_data,
+	wst_sensor_format_uint64_data
+} wst_sensor_format_t;
 
-const wst_sensor_config_t* wst_sensor_get_config(void);
+const char* wst_sensor_get_channel_name(uint16_t chan_type);
+
+wst_sensor_format_t wst_sensor_get_channel_format(uint16_t chan_type);

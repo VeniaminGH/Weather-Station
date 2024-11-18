@@ -11,18 +11,12 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/gpl-3.0.html>.
+ *
  */
 
-#pragma once
-
-#include <zephyr/rtio/rtio.h>
-
-#include <stdint.h>
-
-typedef struct wst_sensor_config {
-	struct rtio_iodev** iodevs;
-	uint16_t	sensor_count;
-	uint32_t	polling_period_ms;
-} wst_sensor_config_t;
-
-const wst_sensor_config_t* wst_sensor_get_config(void);
+&i2c0 {
+	bmi160_i2c: bmi@68 {
+		compatible = "bosch,bmi160";
+		reg = <0x68>;
+	};
+};

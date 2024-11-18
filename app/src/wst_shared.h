@@ -42,9 +42,17 @@ typedef enum wst_event {
 } wst_event_t;
 
 
+typedef union wst_sensor_data {
+	struct sensor_three_axis_data q31_3d_data;
+	struct sensor_q31_data q31_data;
+	struct sensor_occurrence_data occurence;
+	struct sensor_byte_data byte_data;
+	struct sensor_uint64_data uint64_data;
+} wst_sensor_data_t;
+
 typedef struct wst_sensor_value {
 	struct sensor_chan_spec spec;
-	struct sensor_q31_data data;
+	wst_sensor_data_t data;
 } wst_sensor_value_t;
 
 typedef struct wst_event_msg {
