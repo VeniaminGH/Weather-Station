@@ -20,3 +20,12 @@
 		reg = <0x68>;
 	};
 };
+
+/ {
+	sensor_config: sensor-config {
+		compatible = "wst,sensor-config";
+		status = "okay";
+
+		polling-interval-ms = <1000>;
+	};
+};

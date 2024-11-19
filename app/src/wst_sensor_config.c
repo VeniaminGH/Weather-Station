@@ -29,8 +29,6 @@
 LOG_MODULE_REGISTER(wst_sensor_config);
 
 #define WST_SENSOR_COUNT				(3)
-#define WST_SENSOR_POLLING_INTERVAL_MS	(5000)
-
 
 static const struct device *const die_temp_sensor = DEVICE_DT_GET(DT_ALIAS(die_temp0));
 SENSOR_DT_READ_IODEV(die_temp_iodev, DT_ALIAS(die_temp0),
@@ -59,7 +57,7 @@ static struct rtio_iodev* iodevs[] = {
 static const wst_sensor_config_t sensor_config = {
 	.iodevs = iodevs,
 	.sensor_count = WST_SENSOR_COUNT,
-	.polling_period_ms = WST_SENSOR_POLLING_INTERVAL_MS
+	.polling_period_ms = DT_PROP(DT_NODELABEL(sensor_config), polling_interval_ms)
 };
 
 const wst_sensor_config_t* wst_sensor_get_config(void)

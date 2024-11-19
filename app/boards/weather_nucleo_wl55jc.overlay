@@ -43,3 +43,12 @@
 		reg = <0x23>;
 	};
 };
+
+/ {
+	sensor_config: sensor-config {
+		compatible = "wst,sensor-config";
+		status = "okay";
+
+		polling-interval-ms = <5000>;
+	};
+};

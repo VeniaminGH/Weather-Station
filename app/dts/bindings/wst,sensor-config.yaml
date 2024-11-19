@@ -13,25 +13,12 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/gpl-3.0.html>.
 #
 
-cmake_minimum_required(VERSION 3.20.0)
+description: WST sensor configuration properties bindings.
 
-find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
+compatible: "wst,sensor-config"
 
-project(wst_sensor_sim)
-
-target_include_directories(app PRIVATE
-  ../../../src/
-)
-
-FILE(GLOB wst_app_sources
-  ../../../src/wst_sensor_thread.c
-  ../../../src/wst_sensor_utils.c
-  ../../../src/wst_shared.c
-)
-
-target_sources(app PRIVATE
-  ${wst_app_sources}
-  src/main.c
-  src/wst_app_thread.c
-  src/wst_sensor_config.c
-)
+properties:
+  polling-interval-ms:
+    type: int
+    required: true
+    description: sensor report interval in ms
