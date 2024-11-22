@@ -27,6 +27,7 @@ target_include_directories(app PRIVATE
 FILE(GLOB wst_app_sources
   ../../../src/wst_sensor_thread.c
   ../../../src/wst_sensor_utils.c
+  ../../../src/wst_sensor_config.c
   ../../../src/wst_shared.c
 )
 
@@ -34,5 +35,4 @@ target_sources(app PRIVATE
   ${wst_app_sources}
   src/main.c
   src/wst_app_thread.c
-  src/wst_sensor_config.c
 )

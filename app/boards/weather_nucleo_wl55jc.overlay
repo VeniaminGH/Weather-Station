@@ -13,6 +13,8 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/gpl-3.0.html>.
  */
 
+#include "wst_sensor_types.h"
+
 / {
 	leds: leds {
 		red_led_3: led_2 {
@@ -50,5 +52,39 @@
 		status = "okay";
 
 		polling-interval-ms = <5000>;
+
+		die_temp_sensor: die-temp-sensor {
+			compatible = "wst,sensor";
+			status = "okay";
+
+			friendly-name = "Die Temp Sensor";
+			channel-types =
+				<WST_CHANNEL_TYPE_DIE_TEMP>;
+			sensor-device = <&die_temp>;
+		};
+
+		env_sensor: env-sensor {
+			compatible = "wst,sensor";
+			status = "okay";
+
+			friendly-name = "Environment Sensor";
+			channel-types = <
+				WST_CHANNEL_TYPE_AMBIENT_TEMP
+				WST_CHANNEL_TYPE_HUMIDITY
+				WST_CHANNEL_TYPE_PRESS
+				WST_CHANNEL_TYPE_GAS_RES
+			>;
+			sensor-device = <&bme680_i2c>;
+		};
+
+		light_sensor: light-sensor {
+			compatible = "wst,sensor";
+			status = "okay";
+
+			friendly-name = "Light Sensor";
+			channel-types =
+				<WST_CHANNEL_TYPE_LIGHT>;
+			sensor-device = <&bh1750_i2c>;
+		};
 	};
 };

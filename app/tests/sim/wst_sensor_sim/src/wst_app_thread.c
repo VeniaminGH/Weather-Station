@@ -35,14 +35,14 @@ static void log_sensor_data(const wst_event_msg_t* msg)
 		switch (wst_sensor_get_channel_format(value->spec.chan_type)) {
 
 			case wst_sensor_format_scalar:
-				LOG_INF("%-20s for channel: value - %" PRIsensor_q31_data,
+				LOG_INF("%-20s channel value - %" PRIsensor_q31_data,
 					wst_sensor_get_channel_name(value->spec.chan_type),
 					PRIsensor_q31_data_arg(value->data.q31_data, 0)
 				);
 				break;
 
 			case wst_sensor_format_3d_vector:
-				LOG_INF("%-20s for channel: value - %" PRIsensor_three_axis_data,
+				LOG_INF("%-20s channel value - %" PRIsensor_three_axis_data,
 					wst_sensor_get_channel_name(value->spec.chan_type),
 					PRIsensor_three_axis_data_arg(value->data.q31_3d_data, 0)
 				);

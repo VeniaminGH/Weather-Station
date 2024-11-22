@@ -14,11 +14,12 @@
  */
 
 #include "wst_sensor_config.h"
+#include "wst_sensor_utils.h"
 
 #include <zephyr/kernel.h>
+#include <zephyr/toolchain.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/device.h>
-#include <zephyr/sys/__assert.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/drivers/sensor_data_types.h>
@@ -28,60 +29,104 @@
 //#define LOG_LEVEL LOG_LEVEL_DBG
 LOG_MODULE_REGISTER(wst_sensor_config);
 
-#define WST_SENSOR_COUNT				(3)
+//
+// Configure DT compatibility to wst,senor.yaml profile
+//
+#define DT_DRV_COMPAT wst_sensor
 
-static const struct device *const die_temp_sensor = DEVICE_DT_GET(DT_ALIAS(die_temp0));
-SENSOR_DT_READ_IODEV(die_temp_iodev, DT_ALIAS(die_temp0),
-	{SENSOR_CHAN_DIE_TEMP, 0}
+//
+// Declare iodevs for sensors RTIO
+//
+#define WST_DT_SENSOR_CHANNEL_ARRAY_DEFINE(node_id, prop, idx)	\
+	{.chan_type = DT_PROP_BY_IDX(node_id, prop, idx), .chan_idx = 0}
+
+
+#define WST_DT_READ_IODEV(_inst)												\
+	SENSOR_DT_READ_IODEV(														\
+		_CONCAT(sensor_iodev, _inst),											\
+		DT_PHANDLE(DT_DRV_INST(_inst), sensor_device),							\
+		DT_INST_FOREACH_PROP_ELEM_SEP(											\
+			_inst, channel_types,												\
+			WST_DT_SENSOR_CHANNEL_ARRAY_DEFINE, (,))							\
 );
 
-static const struct device *const light_sensor = DEVICE_DT_GET_ONE(rohm_bh1750);
-SENSOR_DT_READ_IODEV(light_iodev, DT_COMPAT_GET_ANY_STATUS_OKAY(rohm_bh1750),
-	{SENSOR_CHAN_LIGHT, 0}
-);
+DT_INST_FOREACH_STATUS_OKAY(WST_DT_READ_IODEV);
 
-static const struct device *const env_sensor = DEVICE_DT_GET_ONE(bosch_bme680);
-SENSOR_DT_READ_IODEV(env_iodev, DT_COMPAT_GET_ANY_STATUS_OKAY(bosch_bme680),
-	{SENSOR_CHAN_AMBIENT_TEMP, 0},
-	{SENSOR_CHAN_HUMIDITY, 0},
-	{SENSOR_CHAN_PRESS, 0},
-	{SENSOR_CHAN_GAS_RES, 0}
-);
+
+#define WST_DT_READ_IODEV_REFERENCE_DEFINE(_inst)								\
+	_CONCAT(&sensor_iodev, _inst),
 
 static struct rtio_iodev* iodevs[] = {
-	&die_temp_iodev,
-	&light_iodev,
-	&env_iodev,
+	DT_INST_FOREACH_STATUS_OKAY(WST_DT_READ_IODEV_REFERENCE_DEFINE)
 };
 
+//
+// Declare sensors info
+//
+#define WST_DT_SENSOR_DEVICE_DEFINE(_inst)										\
+	DEVICE_DT_GET(DT_PHANDLE(DT_DRV_INST(_inst), sensor_device))
+
+#define WST_DT_SENSOR_INFO(_inst)												\
+	static const wst_sensor_info_t _CONCAT(sensor, _inst) = {					\
+		.sensor_device = WST_DT_SENSOR_DEVICE_DEFINE(_inst),					\
+		.name = DT_NODE_FULL_NAME(DT_DRV_INST(_inst)),							\
+		.friendly_name = DT_PROP(DT_DRV_INST(_inst), friendly_name),			\
+		.channel_type_count = DT_PROP_LEN(DT_DRV_INST(_inst), channel_types),	\
+		.channel_types = DT_PROP(DT_DRV_INST(_inst), channel_types),			\
+	};
+
+DT_INST_FOREACH_STATUS_OKAY(WST_DT_SENSOR_INFO);
+
+#define WST_DT_SENSOR_INFO_REFERENCE_DEFINE(_inst)								\
+	_CONCAT(&sensor, _inst),
+
+static const wst_sensor_info_t* sensors[] = {
+	DT_INST_FOREACH_STATUS_OKAY(WST_DT_SENSOR_INFO_REFERENCE_DEFINE)
+};
+
+//
+// Declare sensors configuration
+//
 static const wst_sensor_config_t sensor_config = {
 	.iodevs = iodevs,
-	.sensor_count = WST_SENSOR_COUNT,
+	.sensors = sensors,
+	.sensor_count = ARRAY_SIZE(sensors),
 	.polling_period_ms = DT_PROP(DT_NODELABEL(sensor_config), polling_interval_ms)
 };
 
+static int get_sensor_count(void)
+{
+	return ARRAY_SIZE(sensors);
+}
+
+static void print_sensor_info(const wst_sensor_info_t* sensor)
+{
+	LOG_INF("Sensor '%s' found on [%s] device",
+		sensor->name,
+		sensor->sensor_device->name
+	);
+
+	LOG_INF("Supported channels on %s:", sensor->friendly_name);
+
+	for (int i = 0; i < sensor->channel_type_count; i++) {
+		LOG_INF("   %s", wst_sensor_get_channel_name(sensor->channel_types[i]));
+	}
+}
+
 const wst_sensor_config_t* wst_sensor_get_config(void)
 {
-	if (!device_is_ready(die_temp_sensor)) {
-		LOG_ERR("device %s not ready.", die_temp_sensor->name);
-		k_oops();
-	} else {
-		LOG_INF("%s device found", die_temp_sensor->name);
+	LOG_INF("Sensor polling period: %d ms", sensor_config.polling_period_ms);
+
+	for (int i = 0; i < get_sensor_count(); i++)
+	{
+		if (!device_is_ready(sensors[i]->sensor_device)) {
+			LOG_ERR("device %s not ready.", sensors[i]->sensor_device->name);
+			k_oops();
+		} else {
+			print_sensor_info(sensors[i]);
+		}
 	}
 
-	if (!device_is_ready(env_sensor)) {
-		LOG_ERR("device %s not ready.", env_sensor->name);
-		k_oops();
-	} else {
-		LOG_INF("%s device found", env_sensor->name);
-	}
-
-	if (!device_is_ready(light_sensor)) {
-		LOG_ERR("device %s not ready.", light_sensor->name);
-		k_oops();
-	} else {
-		LOG_INF("%s device found", light_sensor->name);
-	}
 
 	return &sensor_config;
 }
