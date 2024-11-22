@@ -13,26 +13,22 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/gpl-3.0.html>.
 #
 
-cmake_minimum_required(VERSION 3.20.0)
+description: WST sensor common properties bindings
 
-find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
+compatible: "wst,sensor"
 
-project(wst_sensor_sim)
+include: sensor-device.yaml
 
-target_include_directories(app PRIVATE
-  ../../../src/
-  ../../../include/
-)
+properties:
+  friendly-name:
+    required: true
 
-FILE(GLOB wst_app_sources
-  ../../../src/wst_sensor_thread.c
-  ../../../src/wst_sensor_utils.c
-  ../../../src/wst_shared.c
-)
+  channel-types:
+    type: array
+    required: true
+    description: Zephyr sensor channel types
 
-target_sources(app PRIVATE
-  ${wst_app_sources}
-  src/main.c
-  src/wst_app_thread.c
-  src/wst_sensor_config.c
-)
+  sensor-device:
+    type: phandle
+    required: true
+    description: physical sensor device

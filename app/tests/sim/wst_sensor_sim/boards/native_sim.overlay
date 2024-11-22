@@ -14,10 +14,17 @@
  *
  */
 
+#include "../../../../include/wst_sensor_types.h"
+
 &i2c0 {
-	bmi160_i2c: bmi@68 {
+	bmi160_i2c_0: bmi@68 {
 		compatible = "bosch,bmi160";
 		reg = <0x68>;
+	};
+
+	bmi160_i2c_1: bmi@69 {
+		compatible = "bosch,bmi160";
+		reg = <0x69>;
 	};
 };
 
@@ -27,5 +34,27 @@
 		status = "okay";
 
 		polling-interval-ms = <1000>;
+
+		accel_gyro: accel-gyro {
+			compatible = "wst,sensor";
+			status = "okay";
+
+			friendly-name = "Accel Gyro Sensor";
+			channel-types = <
+				WST_CHANNEL_TYPE_ACCEL_XYZ
+				WST_CHANNEL_TYPE_GYRO_XYZ
+			>;
+			sensor-device = <&bmi160_i2c_0>;
+		};
+
+		die_temp: die-temp {
+			compatible = "wst,sensor";
+			status = "okay";
+
+			friendly-name = "Die Temp Sensor";
+			channel-types =
+				<WST_CHANNEL_TYPE_DIE_TEMP>;
+			sensor-device = <&bmi160_i2c_1>;
+		};
 	};
 };

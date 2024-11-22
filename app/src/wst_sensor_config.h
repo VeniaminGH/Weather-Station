@@ -19,10 +19,21 @@
 
 #include <stdint.h>
 
+typedef struct wst_sensor_info {
+	const struct device* sensor_device;
+	const char *name;
+	const char *friendly_name;
+	const int channel_type_count;
+	const int32_t channel_types[];
+} wst_sensor_info_t;
+
+
 typedef struct wst_sensor_config {
+	uint16_t sensor_count;
+	uint32_t polling_period_ms;
+
 	struct rtio_iodev** iodevs;
-	uint16_t	sensor_count;
-	uint32_t	polling_period_ms;
+	const wst_sensor_info_t** sensors;
 } wst_sensor_config_t;
 
 const wst_sensor_config_t* wst_sensor_get_config(void);
