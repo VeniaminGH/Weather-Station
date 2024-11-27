@@ -39,7 +39,7 @@
 #define IPSO_OBJECT_ID_ILLUMINANCE_SENSOR	(3301)	// Illuminance Sensor
 #define IPSO_OBJECT_ID_PRESENCE_SENSOR		(3302)	// Presence Sensor
 #define IPSO_OBJECT_ID_TEMPERATURE_SENSOR	(3303)	// Temperature Sensor
-#define IPSO_OBJECT_ID_HUMIDITY_SENOSR		(3304)	// Humidity Sensor
+#define IPSO_OBJECT_ID_HUMIDITY_SENSOR		(3304)	// Humidity Sensor
 #define IPSO_OBJECT_ID_POWER_MEASUREMENT	(3305)	// Power Measurement
 #define IPSO_OBJECT_ID_ACTUATION			(3306)	// Actuation
 #define IPSO_OBJECT_ID_SET_POINT			(3308)	// Set Point
@@ -87,7 +87,8 @@
 #define IPSO_OBJECT_ID_MULTISTATE_SELECTOR	(3348)	// Multistate Selector
 
 
-#define CAYENNE_LPP_TYPE(ipso_id)				((ipso_id) - IPSO_OBJECT_ID_BASE)
+#define CAYENNE_LPP_TYPE(ipso_id)			((ipso_id) - IPSO_OBJECT_ID_BASE)
+
 
 
 /**
@@ -103,7 +104,8 @@ typedef enum {
 	cayenne_lpp_result_error_unknown_type = 1,		//< unknown data type
 	cayenne_lpp_result_error_not_implemented = 2,	//< unsuported data type
 	cayenne_lpp_result_error_overflow = 3,			//< no free space in encoding stream
-	cayenne_lpp_result_error_end_of_stream = 4		//< end of encoding stream
+	cayenne_lpp_result_error_end_of_stream = 4,		//< end of encoding stream
+	cayenne_lpp_result_error_out_of_range = 5		//< input is out of supported range
 } cayenne_lpp_result_t;
 
 /**
@@ -118,7 +120,7 @@ typedef enum {
 	cayenne_lpp_type_illuminance_sensor		= CAYENNE_LPP_TYPE(IPSO_OBJECT_ID_ILLUMINANCE_SENSOR),
 	cayenne_lpp_type_presence_sensor		= CAYENNE_LPP_TYPE(IPSO_OBJECT_ID_PRESENCE_SENSOR),
 	cayenne_lpp_type_temperature_sensor		= CAYENNE_LPP_TYPE(IPSO_OBJECT_ID_TEMPERATURE_SENSOR),
-	cayenne_lpp_type_humiditiy_sensor		= CAYENNE_LPP_TYPE(IPSO_OBJECT_ID_HUMIDITY_SENOSR),
+	cayenne_lpp_type_humidity_sensor		= CAYENNE_LPP_TYPE(IPSO_OBJECT_ID_HUMIDITY_SENSOR),
 	cayenne_lpp_type_power_measurement		= CAYENNE_LPP_TYPE(IPSO_OBJECT_ID_POWER_MEASUREMENT),
 	cayenne_lpp_type_actuation				= CAYENNE_LPP_TYPE(IPSO_OBJECT_ID_ACTUATION),
 	cayenne_lpp_type_set_point				= CAYENNE_LPP_TYPE(IPSO_OBJECT_ID_SET_POINT),
@@ -167,29 +169,33 @@ typedef enum {
  * @brief Cayenne LPP value type
  */
 typedef union {
-		uint8_t digital_input;		//< 1 byte
-		uint8_t digital_output;		//< 1 byte
+		uint8_t digital_input;		//< range: 0 .. 255
+		uint8_t digital_output;		//< range: 0 .. 255
 
-		float analog_input;			//< 2 bytes, signed, 0.01
-		float analog_output;		//< 2 bytes, signed, 0.01
+		float analog_input;			//< range: -327.68 .. 327.67
+		float analog_output;			
 
 		struct {
-			float celsius;			//< 2 bytes, signed, 0.1
+			float celsius;			//< range: -3276.8°C .. +3276.7°C
 		} temperature_sensor;
 
 		struct {
-			float rh;
+			float rh;				//< range: 0.0% .. 100.0%
 		} humidity_sensor;
+
+		struct {
+			float hpa;				//< range: 0.0 hpa .. 6553.5 hpa
+		} barometer;
+
+		struct {
+			float lux;				//< range: 0.0 lux .. 65535.0 lux
+		} illuminance_sensor;
 
 		struct {
 			float x;
 			float y;
 			float z;
-		} accelerometer;
-
-		struct {
-			float hpa;
-		} barometer;
+		} gps_location;
 
 		struct {
 			float x;
@@ -201,7 +207,7 @@ typedef union {
 			float x;
 			float y;
 			float z;
-		} gps_location;
+		} accelerometer;
 } cayenne_lpp_value_t;
 
 

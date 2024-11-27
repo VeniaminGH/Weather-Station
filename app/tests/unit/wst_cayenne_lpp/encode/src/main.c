@@ -109,3 +109,48 @@ ZTEST_F(cayenne_lpp_encode, test_stream_encoder_get_buffer)
 	zassert_equal(fixture->max_size, buffer_size, "invalid buffer size");
 	zassert_equal(0, stream_size, "invalid stream size");
 }
+
+/**
+ * @brief Test Cayenne LPP stream encoder buffer overflow
+ *
+ * This test verifies stream buffer overflow handling when encoding.
+ *
+ */
+ZTEST_F(cayenne_lpp_encode, test_stream_encoder_buffer_overflow)
+{
+	cayenne_lpp_result_t result; 
+	cayenne_lpp_value_t value = {.digital_input = 1};
+
+	result = cayenne_lpp_stream_write(
+		fixture->stream,
+		0,
+		cayenne_lpp_type_digital_input,
+		&value
+	);
+	zassert_equal(cayenne_lpp_result_success, result);
+
+	result = cayenne_lpp_stream_write(
+		fixture->stream,
+		1,
+		cayenne_lpp_type_digital_input,
+		&value
+	);
+	zassert_equal(cayenne_lpp_result_success, result);
+
+	result = cayenne_lpp_stream_write(
+		fixture->stream,
+		3,
+		cayenne_lpp_type_digital_input,
+		&value
+	);
+	zassert_equal(cayenne_lpp_result_success, result);
+
+	// expect stream buffer overflow
+	result = cayenne_lpp_stream_write(
+		fixture->stream,
+		4,
+		cayenne_lpp_type_digital_input,
+		&value
+	);
+	zassert_equal(cayenne_lpp_result_error_overflow, result);
+}

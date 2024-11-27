@@ -25,6 +25,9 @@ target_sources(testbinary PRIVATE
   ${cayenne_lpp_sources}
   ${mocks_sources}
   src/main.c
+  src/test_barometer.c
   src/test_input_output.c
+  src/test_humidity_sensor.c
   src/test_temperature_sensor.c
+  src/test_illuminance_sensor.c
 )

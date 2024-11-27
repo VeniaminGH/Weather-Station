@@ -24,12 +24,15 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <stdint.h>
+
+#define ROUND(f)	((f) + (((f) >= 0.0f) ? (0.5f) : (-0.5f)))
 
 // Record size is field size + 1 byte for Channel + 1 byte for Type
 #define CAYENNE_LPP_RECORD_SIZE(size)	((size) + 2)
 
-#define HI_BYTE(b)	((b) >> 8)
-#define LO_BYTE(b)	((b) & 0xff)
+#define HI_BYTE(b)	(((uint16_t)(b)) >> 8)
+#define LO_BYTE(b)	(((uint16_t)(b)) & 0xff)
 
 struct cayenne_lpp_stream {
 	size_t size;
@@ -48,6 +51,9 @@ static const cayenne_lpp_encoding_t encoding[] = {
 	[cayenne_lpp_type_analog_input]			= { .size = 2 },
 	[cayenne_lpp_type_analog_output]		= { .size = 2 },
 	[cayenne_lpp_type_temperature_sensor]	= { .size = 2 },
+	[cayenne_lpp_type_humidity_sensor]		= { .size = 1 },
+	[cayenne_lpp_type_barometer]			= { .size = 2 },
+	[cayenne_lpp_type_illuminance_sensor]	= { .size = 2 },
 };
 
 static cayenne_lpp_result_t cayenne_lpp_type_check(cayenne_lpp_type_t type)
@@ -59,11 +65,12 @@ static cayenne_lpp_result_t cayenne_lpp_type_check(cayenne_lpp_type_t type)
 		case cayenne_lpp_type_analog_input:
 		case cayenne_lpp_type_analog_output:
 		case cayenne_lpp_type_temperature_sensor:
+		case cayenne_lpp_type_humidity_sensor:
+		case cayenne_lpp_type_barometer:
+		case cayenne_lpp_type_illuminance_sensor:
 			break;
 		case cayenne_lpp_type_generic_sensor:
-		case cayenne_lpp_type_illuminance_sensor:
 		case cayenne_lpp_type_presence_sensor:
-		case cayenne_lpp_type_humiditiy_sensor:
 		case cayenne_lpp_type_power_measurement:
 		case cayenne_lpp_type_actuation:
 		case cayenne_lpp_type_set_point:
@@ -72,7 +79,6 @@ static cayenne_lpp_result_t cayenne_lpp_type_check(cayenne_lpp_type_t type)
 		case cayenne_lpp_type_power_control:
 		case cayenne_lpp_type_accelerometer:
 		case cayenne_lpp_type_magnometer:
-		case cayenne_lpp_type_barometer:
 		case cayenne_lpp_type_voltage:
 		case cayenne_lpp_type_current:
 		case cayenne_lpp_type_frequency:
@@ -164,6 +170,7 @@ cayenne_lpp_result_t cayenne_lpp_stream_write(
 		case cayenne_lpp_type_digital_input:
 		case cayenne_lpp_type_digital_output:
 			{
+			// 1 byte, unsigned
 			stream->buffer[stream->wr_pos++] = channel;
 			stream->buffer[stream->wr_pos++] = (uint8_t) type;
 			stream->buffer[stream->wr_pos++] = value->digital_input;
@@ -173,7 +180,10 @@ cayenne_lpp_result_t cayenne_lpp_stream_write(
 		case cayenne_lpp_type_analog_input:
 		case cayenne_lpp_type_analog_output:
 			{
-			int16_t val = (int16_t) (value->analog_input * 100);
+			// 2 bytes, signed, 0.01
+			int32_t val = (int32_t) ROUND(value->analog_input * 100.0f);
+			if ((val < INT16_MIN) || (val > INT16_MAX))
+				return cayenne_lpp_result_error_out_of_range;
 			stream->buffer[stream->wr_pos++] = channel;
 			stream->buffer[stream->wr_pos++] = (uint8_t) type;
 			stream->buffer[stream->wr_pos++] = HI_BYTE(val);
@@ -183,7 +193,48 @@ cayenne_lpp_result_t cayenne_lpp_stream_write(
 
 		case cayenne_lpp_type_temperature_sensor:
 			{
-			int16_t val = (int16_t) (value->temperature_sensor.celsius * 10);
+			// 2 bytes, signed, 0.1°C
+			int32_t val = (int32_t) ROUND(value->temperature_sensor.celsius * 10.0f);
+			if ((val < INT16_MIN) || (val > INT16_MAX))
+				return cayenne_lpp_result_error_out_of_range;
+			stream->buffer[stream->wr_pos++] = channel;
+			stream->buffer[stream->wr_pos++] = (uint8_t) type;
+			stream->buffer[stream->wr_pos++] = HI_BYTE(val);
+			stream->buffer[stream->wr_pos++] = LO_BYTE(val);
+			}
+			break;
+
+		case cayenne_lpp_type_humidity_sensor:
+			{
+			// 1 byte, unsigned, 0.5%
+			if ((value->humidity_sensor.rh < 0) || (value->humidity_sensor.rh > 100.0f))
+				return cayenne_lpp_result_error_out_of_range;
+			uint32_t val = (uint32_t) ROUND(value->humidity_sensor.rh * 2.0f);
+			stream->buffer[stream->wr_pos++] = channel;
+			stream->buffer[stream->wr_pos++] = (uint8_t) type;
+			stream->buffer[stream->wr_pos++] = LO_BYTE(val);
+			}
+			break;
+
+		case cayenne_lpp_type_barometer:
+			{
+			// 2 bytes, unsigned, 0.1 hPa
+			int32_t val = (int32_t) ROUND(value->barometer.hpa * 10.0f);
+			if ((val < 0) || (val > UINT16_MAX))
+				return cayenne_lpp_result_error_out_of_range;
+			stream->buffer[stream->wr_pos++] = channel;
+			stream->buffer[stream->wr_pos++] = (uint8_t) type;
+			stream->buffer[stream->wr_pos++] = HI_BYTE(val);
+			stream->buffer[stream->wr_pos++] = LO_BYTE(val);
+			}
+			break;
+
+		case cayenne_lpp_type_illuminance_sensor:
+			{
+			// 2 bytes, unsigned, 1 lux
+			int32_t val = (int32_t) ROUND(value->illuminance_sensor.lux);
+			if ((val < 0) || (val > UINT16_MAX))
+				return cayenne_lpp_result_error_out_of_range;
 			stream->buffer[stream->wr_pos++] = channel;
 			stream->buffer[stream->wr_pos++] = (uint8_t) type;
 			stream->buffer[stream->wr_pos++] = HI_BYTE(val);
