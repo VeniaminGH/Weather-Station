@@ -35,10 +35,20 @@ static void log_sensor_data(const wst_event_msg_t* msg)
 		switch (wst_sensor_get_channel_format(value->spec.chan_type)) {
 
 			case wst_sensor_format_scalar:
-				LOG_INF("%-20s channel value - %" PRIsensor_q31_data,
-					wst_sensor_get_channel_name(value->spec.chan_type),
-					PRIsensor_q31_data_arg(value->data.q31_data, 0)
-				);
+				{
+					struct sensor_value val;
+					
+					wst_q31_to_sensor_value(
+						value->data.q31_data.readings[0].value,
+						value->data.q31_data.shift,
+						&val);
+
+					LOG_INF("%-20s : %6d.%06d",
+						wst_sensor_get_channel_name(value->spec.chan_type),
+						((val.val1 < 0) || (val.val2 < 0)) ? 0 - abs(val.val1) : abs(val.val1),
+						abs(val.val2)
+					);
+				}
 				break;
 
 			case wst_sensor_format_3d_vector:

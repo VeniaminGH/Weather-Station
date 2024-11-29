@@ -15,6 +15,9 @@
 
 #pragma once
 
+#include <zephyr/dsp/types.h>
+#include <zephyr/drivers/sensor.h>
+
 #include <stdint.h>
 
 typedef enum wst_sensor_format {
@@ -28,3 +31,7 @@ typedef enum wst_sensor_format {
 const char* wst_sensor_get_channel_name(uint16_t chan_type);
 
 wst_sensor_format_t wst_sensor_get_channel_format(uint16_t chan_type);
+
+void wst_q31_to_sensor_value(q31_t q, int8_t shift, struct sensor_value *val);
+
+float wst_q31_to_float(q31_t q, int8_t shift);

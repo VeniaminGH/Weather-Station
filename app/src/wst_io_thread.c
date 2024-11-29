@@ -32,44 +32,63 @@ void wst_io_thread_entry(void *p1, void *p2, void *p3)
 	ARG_UNUSED(p2);
 	ARG_UNUSED(p3);
 
+	bool joined = false;
+
 	//
 	// We remain in supervisor mode to allow IO thread to access LoRaWAN radio.
 	//
 	LOG_INF("IO thread entered");
 
-	ret = wst_lorawan_join();
-	if (ret) {
-		LOG_ERR("Failed to join Network (%d)!", ret);
-		k_oops();
-	}
-
-	LOG_INF("Joined the Network!");
-
-	wst_event_msg_t* msg;
-	msg = sys_heap_alloc(&shared_pool, sizeof(wst_event_msg_t));
-	if (msg == NULL) {
-		LOG_ERR("couldn't alloc memory from shared pool");
-		k_panic();
-	}
-
-	// Send joined message to Application Thread
-	msg->event = wst_event_lorawan_joined;
-	k_queue_alloc_append(&shared_queue_incoming, msg);
-
 	while (1) {
 		// Get LoRaWAN message from Aplication Thread
-		msg = k_queue_get(&shared_queue_outgoing, K_FOREVER);
+		wst_event_msg_t* msg = k_queue_get(&shared_queue_outgoing, K_FOREVER);
 		if (msg == NULL) {
 			LOG_ERR("no msg?");
 			k_panic();
 		}
-		if (wst_event_lorawan_send == msg->event)
-		{
-			// send it to the network
-			ret = wst_lorawan_send(msg->buffer.payload, msg->buffer.size);
+
+		switch (msg->event) {
+
+		case wst_event_lorawan_join:
+			LOG_INF("Join message received");
+			ret = wst_lorawan_join();
 			if (ret) {
-				LOG_ERR("Failed to send data to the Network (%d)!", ret);
+				LOG_ERR("Failed to join Network (%d)!", ret);
+				k_oops();
+			} else {
+				LOG_INF("Joined the Network!");
+				joined = true;
 			}
+			break;
+
+		case wst_event_lorawan_send:
+			LOG_INF("Send message received");
+			if (joined) {
+				// send it to the network
+				ret = wst_lorawan_send(
+					msg->lorawan.send.payload,
+					msg->lorawan.send.size
+				);
+				if (ret) {
+					LOG_ERR("Failed to send data to the Network (%d)!", ret);
+				}
+
+				wst_event_msg_t* app_msg = sys_heap_alloc(
+					&shared_pool,
+					sizeof(wst_event_msg_t)
+				);
+				if (app_msg == NULL) {
+					LOG_ERR("couldn't alloc memory from shared pool");
+					k_panic();
+				}
+				app_msg->event = wst_event_lorawan_send_completed;
+				app_msg->lorawan.send_completed.result = ret;
+				k_queue_alloc_append(&shared_queue_incoming, app_msg);
+			}
+			break;
+
+		default:
+			break;
 		}
 		// and free the message
 		sys_heap_free(&shared_pool, msg);

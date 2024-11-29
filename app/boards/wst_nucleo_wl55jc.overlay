@@ -51,7 +51,7 @@
 		compatible = "wst,sensor-config";
 		status = "okay";
 
-		polling-interval-ms = <5000>;
+		polling-interval-ms = <20000>;
 
 		die_temp_sensor: die-temp-sensor {
 			compatible = "wst,sensor";

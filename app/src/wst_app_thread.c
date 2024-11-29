@@ -19,6 +19,7 @@
 #include "wst_led_driver.h"
 #include "wst_sensor_config.h"
 #include "wst_sensor_utils.h"
+#include "wst_cayenne_lpp.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
@@ -87,34 +88,88 @@ static void key_event_handler(
 	}
 }
 
-static void handle_sensor_data_available(const wst_event_msg_t* msg)
+static void stream_sensor_data(const wst_event_msg_t* msg, cayenne_lpp_stream_t* stream)
 {
 	for (uint16_t i = 0; i < msg->sensor.count; i++) {
 
+		struct sensor_value val;
+		cayenne_lpp_value_t lpp_value;
+		cayenne_lpp_result_t result = cayenne_lpp_result_success;
 		const wst_sensor_value_t* value = &msg->sensor.values[i];
 
-		switch (wst_sensor_get_channel_format(value->spec.chan_type)) {
+		if (wst_sensor_format_scalar == wst_sensor_get_channel_format(value->spec.chan_type)) {
 
-			case wst_sensor_format_scalar:
-				LOG_INF("%-20s channel value - %" PRIsensor_q31_data,
-					wst_sensor_get_channel_name(value->spec.chan_type),
-					PRIsensor_q31_data_arg(value->data.q31_data, 0)
-				);
+			wst_q31_to_sensor_value(
+				value->data.q31_data.readings[0].value,
+				value->data.q31_data.shift,
+				&val
+			);
+
+			LOG_INF("%-20s : %6d.%06d",
+				wst_sensor_get_channel_name(value->spec.chan_type),
+				((val.val1 < 0) || (val.val2 < 0)) ? 0 - abs(val.val1) : abs(val.val1),
+				abs(val.val2)
+			);
+		};
+
+		switch (value->spec.chan_type) {
+			case SENSOR_CHAN_AMBIENT_TEMP:
+			case SENSOR_CHAN_DIE_TEMP:
+				{
+				lpp_value.temperature_sensor.celsius = sensor_value_to_float(&val);
+
+				result = cayenne_lpp_stream_write(
+					stream,
+					SENSOR_CHAN_DIE_TEMP == value->spec.chan_type ? 1 : 0,
+					cayenne_lpp_type_temperature_sensor,
+					&lpp_value);
+				}
 				break;
 
-			case wst_sensor_format_3d_vector:
-				LOG_INF("%-20s channel value - %" PRIsensor_three_axis_data,
-					wst_sensor_get_channel_name(value->spec.chan_type),
-					PRIsensor_three_axis_data_arg(value->data.q31_3d_data, 0)
-				);
+			case SENSOR_CHAN_LIGHT:
+				{
+				lpp_value.illuminance_sensor.lux = sensor_value_to_float(&val);
+
+				result = cayenne_lpp_stream_write(
+					stream,
+					0,
+					cayenne_lpp_type_illuminance_sensor,
+					&lpp_value);
+				}
 				break;
 
-			case wst_sensor_format_occurence:
-			case wst_sensor_format_byte_data:
-			case wst_sensor_format_uint64_data:
+			case SENSOR_CHAN_HUMIDITY:
+				{
+				lpp_value.humidity_sensor.rh = sensor_value_to_float(&val);
+
+				result = cayenne_lpp_stream_write(
+					stream,
+					0,
+					cayenne_lpp_type_humidity_sensor,
+					&lpp_value);
+				}
+				break;
+
+			case SENSOR_CHAN_PRESS:
+				{
+				lpp_value.barometer.hpa = sensor_value_to_float(&val);
+
+				result = cayenne_lpp_stream_write(
+					stream,
+					0,
+					cayenne_lpp_type_barometer,
+					&lpp_value);
+				}
+				break;
+
 			default:
 				break;
 		};
+
+		if (cayenne_lpp_result_error_end_of_stream == result) {
+			// return and send what we have serialized
+			return;
+		}
 	}
 }
 
@@ -125,8 +180,23 @@ static void application_thread(void *p1, void *p2, void *p3)
 	ARG_UNUSED(p3);
 
 	LOG_DBG("Application thread entered");
+
 	wst_event_msg_t* msg;
+
 	bool joined = false;
+	bool busy = false;
+
+	size_t max_size = 10;
+
+	// Send join message to IO Thread
+	msg = sys_heap_alloc(&shared_pool, sizeof(wst_event_msg_t));
+	if (msg == NULL) {
+		LOG_ERR("couldn't alloc memory from shared pool");
+		k_panic();
+	}
+	msg->event = wst_event_lorawan_join;
+	k_queue_alloc_append(&shared_queue_outgoing, msg);
+
 
 	//
 	// Wait for indication that IO thread joined the LoRaWAN Network
@@ -139,33 +209,75 @@ static void application_thread(void *p1, void *p2, void *p3)
 			k_panic();
 		}
 
-		switch (msg->event)
-		{
-		case wst_event_lorawan_joined:
-			joined = true;
-			LOG_INF("Joined the Network!");
+		switch (msg->event) {
+
+		case wst_event_lorawan_datarate:
+			LOG_INF("Datarate message received");
+			if (!joined) {
+				LOG_INF("Joined the Network!");
+				joined = true;
+			}
+			LOG_INF("New Datarate: DR_%d, Next Paylaod %d, Max Payload %d",
+				msg->lorawan.datarate.dr,
+				msg->lorawan.datarate.next_size,
+				msg->lorawan.datarate.max_size);
+			max_size = msg->lorawan.datarate.max_size;
 			break;
 
 		case wst_event_sensor_data_available:
-			handle_sensor_data_available(msg);
-			if (joined)
+			LOG_INF("Data available message received");
+			if (joined && max_size && !busy)
 			{
-				const char* lorawan_msg = "helloworld!";
-				size_t size = strlen(lorawan_msg);
+				size_t stream_size = 0;
+				const uint8_t* stream_buffer = NULL;
 
-				wst_event_msg_t* io_msg = sys_heap_alloc(&shared_pool, sizeof(wst_event_msg_t) + size);
-				if (io_msg == NULL) {
-					LOG_ERR("couldn't alloc memory from shared pool");
-					k_panic();
+				cayenne_lpp_stream_t* stream = cayenne_lpp_stream_new(
+					max_size,
+					NULL
+				);
+
+				stream_sensor_data(msg, stream);
+
+				stream_buffer = cayenne_lpp_stream_get_buffer(
+					stream,
+					NULL,
+					&stream_size
+				);
+
+				if (stream_buffer)
+				{
+					busy = true;
+
+					wst_event_msg_t* io_msg = sys_heap_alloc(
+						&shared_pool,
+						sizeof(wst_event_msg_t) + stream_size
+					);
+
+					if (io_msg == NULL) {
+						LOG_ERR("couldn't alloc memory from shared pool");
+						k_panic();
+					}
+
+					io_msg->event = wst_event_lorawan_send;
+					io_msg->lorawan.send.size = stream_size;
+
+					memcpy(
+						io_msg->lorawan.send.payload,
+						stream_buffer,
+						stream_size
+					);
+
+					k_queue_alloc_append(&shared_queue_outgoing, io_msg);
 				}
-
-				io_msg->event = wst_event_lorawan_send;
-				io_msg->buffer.size = size;
-				memcpy(io_msg->buffer.payload, lorawan_msg, size);
-				k_queue_alloc_append(&shared_queue_outgoing, io_msg);
+				cayenne_lpp_stream_delete(stream);
 			}
 			break;
-		
+
+		case wst_event_lorawan_send_completed:
+			LOG_INF("Send completed message received");
+			busy = false;
+			break;
+
 		default:
 			break;
 		}
@@ -197,8 +309,8 @@ void wst_app_thread_entry(void *p1, void *p2, void *p3)
 	}
 
 	//
-	// Use default memory domain for our application thread and 
-	// add application and shared partitions to it.
+	// Use default memory domain for our application thread
+	// add add application to it.
 	//
 	ret = k_mem_domain_add_partition(
 		&k_mem_domain_default,
@@ -209,12 +321,28 @@ void wst_app_thread_entry(void *p1, void *p2, void *p3)
 		k_oops();
 	}
 
+	//
+	// Add shared partition for messaging
+	//
 	ret = k_mem_domain_add_partition(
 		&k_mem_domain_default,
 		&shared_partition
 	);
 	if (ret != 0) {
 		LOG_ERR("Failed to add shared_partition to mem domain (%d)", ret);
+		k_oops();
+	}
+
+	//
+	// And system-wide pool of memory used by libc malloc()
+	// needed for wst_cayenne_lpp module
+	//
+	ret = k_mem_domain_add_partition(
+		&k_mem_domain_default,
+		&z_malloc_partition
+	);
+	if (ret != 0) {
+		LOG_ERR("Failed to add z_malloc_partition to mem domain (%d)", ret);
 		k_oops();
 	}
 

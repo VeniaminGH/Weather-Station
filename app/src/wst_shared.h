@@ -34,13 +34,33 @@ extern struct k_queue shared_queue_outgoing;
 
 
 typedef enum wst_event {
-	wst_event_lorawan_joined,
+	wst_event_lorawan_join,
+	wst_event_lorawan_datarate,
 	wst_event_lorawan_send,
 	wst_event_lorawan_send_completed,
 	wst_event_lorawan_received,
 	wst_event_sensor_data_available,
 } wst_event_t;
 
+typedef struct wst_lorawan_datarate {
+	uint8_t dr;
+	size_t next_size;
+	size_t max_size;
+} wst_lorawan_datarate_t;
+
+typedef struct wst_lorawan_send {
+	size_t size;
+	uint8_t payload[0];
+} wst_lorawan_send_t;
+
+typedef struct wst_lorawan_send_completed {
+	int result;
+} wst_lorawan_send_completed_t;
+
+typedef struct wst_lorawan_received {
+	size_t size;
+	uint8_t payload[0];
+} wst_lorawan_received_t;
 
 typedef union wst_sensor_data {
 	struct sensor_three_axis_data q31_3d_data;
@@ -59,12 +79,14 @@ typedef struct wst_event_msg {
 	wst_event_t event;
 	union {
 		struct {
-			size_t size;
-			uint8_t payload[0];
-		} buffer;
-		struct {
 			uint16_t count;
 			wst_sensor_value_t values[0];
 		} sensor;
+		union {
+			wst_lorawan_datarate_t datarate;
+			wst_lorawan_send_t send;
+			wst_lorawan_send_completed_t send_completed;
+			wst_lorawan_received_t received;
+		} lorawan;
 	};
 } wst_event_msg_t;

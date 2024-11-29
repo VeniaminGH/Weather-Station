@@ -19,6 +19,10 @@
 #include <zephyr/sys/__assert.h>
 #include <zephyr/logging/log.h>
 
+
+#include "wst_shared.h"
+
+
 #define LORAWAN_DEV_EUI \
 	{0xDD, 0xEE, 0xAA, 0xDD, 0xBB, 0xEE, 0xEE, 0xFF}
 
@@ -51,10 +55,26 @@ static void dl_callback(uint8_t port, bool data_pending,
 
 static void lorwan_datarate_changed(enum lorawan_datarate dr)
 {
-	uint8_t unused, max_size;
+	uint8_t next_size, max_size;
 
-	lorawan_get_payload_sizes(&unused, &max_size);
-	LOG_INF("New Datarate: DR_%d, Max Payload %d", dr, max_size);
+	lorawan_get_payload_sizes(&next_size, &max_size);
+	LOG_DBG("New Datarate: DR_%d, Next Paylaod %d, Max Payload %d",
+		dr, next_size, max_size);
+
+	wst_event_msg_t* msg;
+	msg = sys_heap_alloc(&shared_pool, sizeof(wst_event_msg_t));
+	if (msg == NULL) {
+		LOG_ERR("couldn't alloc memory from shared pool");
+		k_panic();
+	}
+
+	// Send lorawan datarate message to Application Thread
+	msg->event = wst_event_lorawan_datarate;
+	msg->lorawan.datarate.dr = dr;
+	msg->lorawan.datarate.next_size = next_size;
+	msg->lorawan.datarate.max_size = max_size;
+
+	k_queue_alloc_append(&shared_queue_incoming, msg);
 }
 
 static uint8_t dev_eui[] = LORAWAN_DEV_EUI;
@@ -156,7 +176,7 @@ int wst_lorawan_send(void* data, size_t size)
 	int ret;
 
 	LOG_INF("Sending data: Length - %u", size);
-	LOG_HEXDUMP_INF((const uint8_t*) data, size, "Payload");
+	LOG_HEXDUMP_DBG((const uint8_t*) data, size, "Payload");
 
 	uint32_t trials = NUM_OF_RETRIES;
 
