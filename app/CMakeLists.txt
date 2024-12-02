@@ -18,5 +18,22 @@ cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(weather_station)
 
-FILE(GLOB app_sources src/*.c)
-target_sources(app PRIVATE ${app_sources})
+target_sources(app PRIVATE src/main.c)
+
+target_sources(app PRIVATE src/wst_io_thread.c)
+target_sources(app PRIVATE src/wst_app_thread.c)
+target_sources(app PRIVATE src/wst_sensor_thread.c)
+
+target_sources(app PRIVATE src/wst_cayenne_lpp.c)
+target_sources(app PRIVATE src/wst_events.c)
+target_sources(app PRIVATE src/wst_lorawan.c)
+target_sources(app PRIVATE src/wst_sensor_config.c)
+target_sources(app PRIVATE src/wst_sensor_utils.c)
+
+target_sources_ifdef(
+	CONFIG_WST_UI
+    app
+    PRIVATE
+    src/wst_key_driver.c
+	src/wst_led_driver.c
+)

@@ -1,0 +1,11 @@
+menu "Weather Station"
+
+source "Kconfig.zephyr"
+
+config WST_UI
+	bool "Enable user interface"
+	default n
+	help
+		Enables control buttons and led feedback
+
+endmenu

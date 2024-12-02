@@ -40,15 +40,16 @@ K_HEAP_DEFINE(wst_app_resource_pool, 256 * 4 + 128);
 //
 K_APPMEM_PARTITION_DEFINE(wst_app_partition);
 
+#if defined (CONFIG_WST_UI)
 //
 // Global data used by WST app. By tagging with WST_APP_BSS or WST_APP_DATA,
 // we ensure that all this gets linked into wst_app_partition.
 //
 WST_APP_BSS const struct device *key_device;
 WST_APP_BSS const struct device *led_device;
+#endif
 
-#define DELAY_SEND K_MSEC(10000)
-
+#if defined (CONFIG_WST_UI)
 static void key_event_handler(
 	const struct device *dev,
 	wst_key_id_t id,
@@ -87,6 +88,7 @@ static void key_event_handler(
 			break;
 	}
 }
+#endif
 
 static void stream_sensor_data(const wst_event_msg_t* msg, cayenne_lpp_stream_t* stream)
 {
@@ -195,8 +197,6 @@ static void process_sensor_data_event(wst_event_msg_t* msg, size_t max_size)
 
 	if (stream_buffer)
 	{
-		busy = true;
-
 		wst_event_msg_t* io_msg = sys_heap_alloc(
 			&events_pool,
 			sizeof(wst_event_msg_t) + stream_size
@@ -276,6 +276,7 @@ static void application_thread(void *p1, void *p2, void *p3)
 			LOG_INF("Data available message received");
 			if (joined && max_size && !busy)
 			{
+				busy = true;
 				process_sensor_data_event(msg, max_size);
 			}
 			break;
@@ -303,6 +304,7 @@ void wst_app_thread_entry(void *p1, void *p2, void *p3)
 
 	LOG_INF("APP thread entry");
 
+#if defined (CONFIG_WST_UI)
 	key_device = device_get_binding(WST_KEY_DRIVER_NAME);
 	if (key_device == NULL) {
 		LOG_ERR("Failed to bind key device!");
@@ -314,18 +316,21 @@ void wst_app_thread_entry(void *p1, void *p2, void *p3)
 		LOG_ERR("Failed to bind led device!");
 		k_oops();
 	}
+#endif
 
-	//
-	// Use default memory domain for our application thread
-	// add add application to it.
-	//
-	ret = k_mem_domain_add_partition(
-		&k_mem_domain_default,
-		&wst_app_partition
-	);
-	if (ret != 0) {
-		LOG_ERR("Failed to add wst_app_partition to mem domain (%d)", ret);
-		k_oops();
+	if (wst_app_partition.size) {
+		//
+		// Use default memory domain for our application thread
+		// add add application to it.
+		//
+		ret = k_mem_domain_add_partition(
+			&k_mem_domain_default,
+			&wst_app_partition
+		);
+		if (ret != 0) {
+			LOG_ERR("Failed to add wst_app_partition to mem domain (%d)", ret);
+			k_oops();
+		}
 	}
 
 	//
@@ -364,18 +369,22 @@ void wst_app_thread_entry(void *p1, void *p2, void *p3)
 	//
 	k_thread_access_grant(
 		k_current_get(),
+#if defined (CONFIG_WST_UI)
 		key_device,
 		led_device,
+#endif
 		&app_events_queue,
 		&io_events_queue
 	);
 
+#if defined (CONFIG_WST_UI)
 	//
 	// Set the callback function for the key driver. This has to be
 	// done from supervisor mode, as this code will run in supervisor
 	// mode in system worker context.
 	//
 	wst_key_driver_set_handler(key_device, key_event_handler, NULL);
+#endif
 
 	//
 	// Switch APP thread to user mode

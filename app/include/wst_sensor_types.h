@@ -29,7 +29,7 @@
 //
 // Skip below by Devicetree generator
 //
-#if CONFIG_SENSOR
+#if defined(CONFIG_SENSOR)
 
 #include <zephyr/drivers/sensor.h>
 
