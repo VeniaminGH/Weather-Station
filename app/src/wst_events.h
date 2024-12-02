@@ -22,15 +22,15 @@
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/drivers/sensor_data_types.h>
 
-#define SHARED_POOL_SIZE (2048)
+#define WST_EVENTS_POOL_SIZE (2048)
 
-extern struct k_mem_partition shared_partition;
+extern struct k_mem_partition events_partition;
 
-extern struct sys_heap shared_pool;
-extern uint8_t shared_pool_mem[SHARED_POOL_SIZE];
+extern struct sys_heap events_pool;
+extern uint8_t events_pool_mem[WST_EVENTS_POOL_SIZE];
 
-extern struct k_queue shared_queue_incoming;
-extern struct k_queue shared_queue_outgoing;
+extern struct k_queue app_events_queue;
+extern struct k_queue io_events_queue;
 
 
 typedef enum wst_event {

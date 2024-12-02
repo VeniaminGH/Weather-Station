@@ -14,7 +14,7 @@
  */
 
 #include "wst_app_thread.h"
-#include "wst_shared.h"
+#include "wst_events.h"
 #include "wst_sensor_config.h"
 #include "wst_sensor_utils.h"
 
@@ -78,7 +78,7 @@ static void application_thread(void *p1, void *p2, void *p3)
 	wst_event_msg_t* msg;
 
 	while (1) {
-		msg = k_queue_get(&shared_queue_incoming, K_FOREVER);
+		msg = k_queue_get(&app_events_queue, K_FOREVER);
 
 		if (msg == NULL) {
 			LOG_ERR("no msg?");
@@ -96,7 +96,7 @@ static void application_thread(void *p1, void *p2, void *p3)
 		}
 
 		// free the message
-		sys_heap_free(&shared_pool, msg);
+		sys_heap_free(&events_pool, msg);
 	}
 }
 
@@ -112,8 +112,8 @@ void wst_app_thread_entry(void *p1, void *p2, void *p3)
 	//
 	k_thread_access_grant(
 		k_current_get(),
-		&shared_queue_incoming,
-		&shared_queue_outgoing
+		&app_events_queue,
+		&io_events_queue
 	);
 
 	//

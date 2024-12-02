@@ -28,7 +28,7 @@ FILE(GLOB wst_app_sources
   ../../../src/wst_sensor_thread.c
   ../../../src/wst_sensor_utils.c
   ../../../src/wst_sensor_config.c
-  ../../../src/wst_shared.c
+  ../../../src/wst_events.c
 )
 
 target_sources(app PRIVATE

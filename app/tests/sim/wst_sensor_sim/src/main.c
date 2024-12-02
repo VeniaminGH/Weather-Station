@@ -16,7 +16,7 @@
 
 #include "wst_sensor_thread.h"
 #include "wst_app_thread.h"
-#include "wst_shared.h"
+#include "wst_events.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -33,7 +33,7 @@ K_THREAD_STACK_DEFINE(wst_app_stack, WST_APP_STACKSIZE);
 
 int main(void)
 {
-	sys_heap_init(&shared_pool, shared_pool_mem, SHARED_POOL_SIZE);
+	sys_heap_init(&events_pool, events_pool_mem, sizeof(events_pool_mem));
 
 	// Create App Thread
 	k_tid_t app_thread = k_thread_create(

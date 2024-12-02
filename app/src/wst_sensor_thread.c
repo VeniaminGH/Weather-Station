@@ -16,7 +16,7 @@
 #include "wst_sensor_thread.h"
 #include "wst_sensor_config.h"
 #include "wst_sensor_utils.h"
-#include "wst_shared.h"
+#include "wst_events.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -239,7 +239,7 @@ void wst_sensor_thread_entry(void *p1, void *p2, void *p3)
 			LOG_DBG("Obtained %u sensor values", count);
 
 			// Allocate sensor message to Applicaion thread
-			wst_event_msg_t* msg = sys_heap_alloc(&shared_pool,
+			wst_event_msg_t* msg = sys_heap_alloc(&events_pool,
 				sizeof(wst_event_msg_t) + sizeof(wst_sensor_value_t) * count);
 
 			if (!msg) {
@@ -272,7 +272,7 @@ void wst_sensor_thread_entry(void *p1, void *p2, void *p3)
 			}
 
 			// Send sensor message to Application thread
-			k_queue_alloc_append(&shared_queue_incoming, msg);
+			k_queue_alloc_append(&app_events_queue, msg);
 		}
 
 		k_sleep(K_MSEC(sensor_config->polling_period_ms));

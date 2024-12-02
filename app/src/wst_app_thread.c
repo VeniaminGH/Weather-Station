@@ -14,7 +14,7 @@
  */
 
 #include "wst_app_thread.h"
-#include "wst_shared.h"
+#include "wst_events.h"
 #include "wst_key_driver.h"
 #include "wst_led_driver.h"
 #include "wst_sensor_config.h"
@@ -189,20 +189,20 @@ static void application_thread(void *p1, void *p2, void *p3)
 	size_t max_size = 10;
 
 	// Send join message to IO Thread
-	msg = sys_heap_alloc(&shared_pool, sizeof(wst_event_msg_t));
+	msg = sys_heap_alloc(&events_pool, sizeof(wst_event_msg_t));
 	if (msg == NULL) {
 		LOG_ERR("couldn't alloc memory from shared pool");
 		k_panic();
 	}
 	msg->event = wst_event_lorawan_join;
-	k_queue_alloc_append(&shared_queue_outgoing, msg);
+	k_queue_alloc_append(&io_events_queue, msg);
 
 
 	//
 	// Wait for indication that IO thread joined the LoRaWAN Network
 	//
 	while (1) {
-		msg = k_queue_get(&shared_queue_incoming, K_FOREVER);
+		msg = k_queue_get(&app_events_queue, K_FOREVER);
 
 		if (msg == NULL) {
 			LOG_ERR("no msg?");
@@ -249,7 +249,7 @@ static void application_thread(void *p1, void *p2, void *p3)
 					busy = true;
 
 					wst_event_msg_t* io_msg = sys_heap_alloc(
-						&shared_pool,
+						&events_pool,
 						sizeof(wst_event_msg_t) + stream_size
 					);
 
@@ -267,7 +267,7 @@ static void application_thread(void *p1, void *p2, void *p3)
 						stream_size
 					);
 
-					k_queue_alloc_append(&shared_queue_outgoing, io_msg);
+					k_queue_alloc_append(&io_events_queue, io_msg);
 				}
 				cayenne_lpp_stream_delete(stream);
 			}
@@ -283,7 +283,7 @@ static void application_thread(void *p1, void *p2, void *p3)
 		}
 
 		// free the message
-		sys_heap_free(&shared_pool, msg);
+		sys_heap_free(&events_pool, msg);
 	}
 }
 
@@ -326,7 +326,7 @@ void wst_app_thread_entry(void *p1, void *p2, void *p3)
 	//
 	ret = k_mem_domain_add_partition(
 		&k_mem_domain_default,
-		&shared_partition
+		&events_partition
 	);
 	if (ret != 0) {
 		LOG_ERR("Failed to add shared_partition to mem domain (%d)", ret);
@@ -359,8 +359,8 @@ void wst_app_thread_entry(void *p1, void *p2, void *p3)
 		k_current_get(),
 		key_device,
 		led_device,
-		&shared_queue_incoming,
-		&shared_queue_outgoing
+		&app_events_queue,
+		&io_events_queue
 	);
 
 	//

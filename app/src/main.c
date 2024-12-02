@@ -17,7 +17,7 @@
 #include "wst_io_thread.h"
 #include "wst_app_thread.h"
 #include "wst_sensor_thread.h"
-#include "wst_shared.h"
+#include "wst_events.h"
 
 #include <zephyr/kernel.h>
 
@@ -47,14 +47,14 @@ int main(void)
 	LOG_INF("APP partition: %p %zu", (void *)wst_app_partition.start,
 		(size_t)wst_app_partition.size);
 
-	LOG_INF("Shared partition: %p %zu", (void *)shared_partition.start,
-		(size_t)shared_partition.size);
+	LOG_INF("Events partition: %p %zu", (void *)events_partition.start,
+		(size_t)events_partition.size);
 
 #ifdef Z_LIBC_PARTITION_EXISTS
 	LOG_INF("libc partition: %p %zu", (void *)z_libc_partition.start,
 		(size_t)z_libc_partition.size);
 #endif
-	sys_heap_init(&shared_pool, shared_pool_mem, SHARED_POOL_SIZE);
+	sys_heap_init(&events_pool, events_pool_mem, sizeof(events_pool_mem));
 
 	// Create IO Thread
 	k_tid_t io_thread = k_thread_create(

@@ -13,22 +13,22 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/gpl-3.0.html>.
  */
 
-#include "wst_shared.h"
+#include "wst_events.h"
 
 //
-// Define the shared partition, which will contain a memory region that
+// Define the events partition, which will contain a memory region that
 // will be accessible by both IO and APP threads
 //
-K_APPMEM_PARTITION_DEFINE(shared_partition);
+K_APPMEM_PARTITION_DEFINE(events_partition);
 
 //
-// Define a memory pool in the shared area
+// Define a memory pool in the events area
 //
-K_APP_DMEM(shared_partition) struct sys_heap shared_pool;
-K_APP_DMEM(shared_partition) uint8_t shared_pool_mem[SHARED_POOL_SIZE];
+K_APP_DMEM(events_partition) struct sys_heap events_pool;
+K_APP_DMEM(events_partition) uint8_t events_pool_mem[WST_EVENTS_POOL_SIZE];
 
 //
 // Define queues for exchanging data between IO and App threads
 //
-K_QUEUE_DEFINE(shared_queue_incoming);
-K_QUEUE_DEFINE(shared_queue_outgoing);
+K_QUEUE_DEFINE(app_events_queue);
+K_QUEUE_DEFINE(io_events_queue);

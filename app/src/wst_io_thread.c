@@ -15,7 +15,7 @@
 
 #include "wst_io_thread.h"
 #include "wst_lorawan.h"
-#include "wst_shared.h"
+#include "wst_events.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/libc-hooks.h>
@@ -41,7 +41,7 @@ void wst_io_thread_entry(void *p1, void *p2, void *p3)
 
 	while (1) {
 		// Get LoRaWAN message from Aplication Thread
-		wst_event_msg_t* msg = k_queue_get(&shared_queue_outgoing, K_FOREVER);
+		wst_event_msg_t* msg = k_queue_get(&io_events_queue, K_FOREVER);
 		if (msg == NULL) {
 			LOG_ERR("no msg?");
 			k_panic();
@@ -74,7 +74,7 @@ void wst_io_thread_entry(void *p1, void *p2, void *p3)
 				}
 
 				wst_event_msg_t* app_msg = sys_heap_alloc(
-					&shared_pool,
+					&events_pool,
 					sizeof(wst_event_msg_t)
 				);
 				if (app_msg == NULL) {
@@ -83,7 +83,7 @@ void wst_io_thread_entry(void *p1, void *p2, void *p3)
 				}
 				app_msg->event = wst_event_lorawan_send_completed;
 				app_msg->lorawan.send_completed.result = ret;
-				k_queue_alloc_append(&shared_queue_incoming, app_msg);
+				k_queue_alloc_append(&app_events_queue, app_msg);
 			}
 			break;
 
@@ -91,6 +91,6 @@ void wst_io_thread_entry(void *p1, void *p2, void *p3)
 			break;
 		}
 		// and free the message
-		sys_heap_free(&shared_pool, msg);
+		sys_heap_free(&events_pool, msg);
 	}
 }

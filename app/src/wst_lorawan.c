@@ -20,7 +20,7 @@
 #include <zephyr/logging/log.h>
 
 
-#include "wst_shared.h"
+#include "wst_events.h"
 
 
 #define LORAWAN_DEV_EUI \
@@ -62,7 +62,7 @@ static void lorwan_datarate_changed(enum lorawan_datarate dr)
 		dr, next_size, max_size);
 
 	wst_event_msg_t* msg;
-	msg = sys_heap_alloc(&shared_pool, sizeof(wst_event_msg_t));
+	msg = sys_heap_alloc(&events_pool, sizeof(wst_event_msg_t));
 	if (msg == NULL) {
 		LOG_ERR("couldn't alloc memory from shared pool");
 		k_panic();
@@ -74,7 +74,7 @@ static void lorwan_datarate_changed(enum lorawan_datarate dr)
 	msg->lorawan.datarate.next_size = next_size;
 	msg->lorawan.datarate.max_size = max_size;
 
-	k_queue_alloc_append(&shared_queue_incoming, msg);
+	k_queue_alloc_append(&app_events_queue, msg);
 }
 
 static uint8_t dev_eui[] = LORAWAN_DEV_EUI;
