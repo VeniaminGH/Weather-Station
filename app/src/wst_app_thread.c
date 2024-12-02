@@ -120,7 +120,9 @@ static void stream_sensor_data(const wst_event_msg_t* msg, cayenne_lpp_stream_t*
 
 				result = cayenne_lpp_stream_write(
 					stream,
-					SENSOR_CHAN_DIE_TEMP == value->spec.chan_type ? 1 : 0,
+					SENSOR_CHAN_DIE_TEMP == value->spec.chan_type ?
+						(value->spec.chan_idx + 0x80) :
+						value->spec.chan_idx,
 					cayenne_lpp_type_temperature_sensor,
 					&lpp_value);
 				}
@@ -132,7 +134,7 @@ static void stream_sensor_data(const wst_event_msg_t* msg, cayenne_lpp_stream_t*
 
 				result = cayenne_lpp_stream_write(
 					stream,
-					0,
+					value->spec.chan_idx,
 					cayenne_lpp_type_illuminance_sensor,
 					&lpp_value);
 				}
@@ -144,7 +146,7 @@ static void stream_sensor_data(const wst_event_msg_t* msg, cayenne_lpp_stream_t*
 
 				result = cayenne_lpp_stream_write(
 					stream,
-					0,
+					value->spec.chan_idx,
 					cayenne_lpp_type_humidity_sensor,
 					&lpp_value);
 				}
@@ -156,7 +158,7 @@ static void stream_sensor_data(const wst_event_msg_t* msg, cayenne_lpp_stream_t*
 
 				result = cayenne_lpp_stream_write(
 					stream,
-					0,
+					value->spec.chan_idx,
 					cayenne_lpp_type_barometer,
 					&lpp_value);
 				}
@@ -171,6 +173,52 @@ static void stream_sensor_data(const wst_event_msg_t* msg, cayenne_lpp_stream_t*
 			return;
 		}
 	}
+}
+
+static void process_sensor_data_event(wst_event_msg_t* msg, size_t max_size)
+{
+	size_t stream_size = 0;
+	const uint8_t* stream_buffer = NULL;
+
+	cayenne_lpp_stream_t* stream = cayenne_lpp_stream_new(
+		max_size,
+		NULL
+	);
+
+	stream_sensor_data(msg, stream);
+
+	stream_buffer = cayenne_lpp_stream_get_buffer(
+		stream,
+		NULL,
+		&stream_size
+	);
+
+	if (stream_buffer)
+	{
+		busy = true;
+
+		wst_event_msg_t* io_msg = sys_heap_alloc(
+			&events_pool,
+			sizeof(wst_event_msg_t) + stream_size
+		);
+
+		if (io_msg == NULL) {
+			LOG_ERR("couldn't alloc memory from shared pool");
+			k_panic();
+		}
+
+		io_msg->event = wst_event_lorawan_send;
+		io_msg->lorawan.send.size = stream_size;
+
+		memcpy(
+			io_msg->lorawan.send.payload,
+			stream_buffer,
+			stream_size
+		);
+
+		k_queue_alloc_append(&io_events_queue, io_msg);
+	}
+	cayenne_lpp_stream_delete(stream);
 }
 
 static void application_thread(void *p1, void *p2, void *p3)
@@ -228,48 +276,7 @@ static void application_thread(void *p1, void *p2, void *p3)
 			LOG_INF("Data available message received");
 			if (joined && max_size && !busy)
 			{
-				size_t stream_size = 0;
-				const uint8_t* stream_buffer = NULL;
-
-				cayenne_lpp_stream_t* stream = cayenne_lpp_stream_new(
-					max_size,
-					NULL
-				);
-
-				stream_sensor_data(msg, stream);
-
-				stream_buffer = cayenne_lpp_stream_get_buffer(
-					stream,
-					NULL,
-					&stream_size
-				);
-
-				if (stream_buffer)
-				{
-					busy = true;
-
-					wst_event_msg_t* io_msg = sys_heap_alloc(
-						&events_pool,
-						sizeof(wst_event_msg_t) + stream_size
-					);
-
-					if (io_msg == NULL) {
-						LOG_ERR("couldn't alloc memory from shared pool");
-						k_panic();
-					}
-
-					io_msg->event = wst_event_lorawan_send;
-					io_msg->lorawan.send.size = stream_size;
-
-					memcpy(
-						io_msg->lorawan.send.payload,
-						stream_buffer,
-						stream_size
-					);
-
-					k_queue_alloc_append(&io_events_queue, io_msg);
-				}
-				cayenne_lpp_stream_delete(stream);
+				process_sensor_data_event(msg, max_size);
 			}
 			break;
 
